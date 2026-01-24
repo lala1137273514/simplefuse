@@ -1,0 +1,188 @@
+// SimpleFuse - Prisma Schema
+// 业务数据存储 (PostgreSQL)
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// 项目管理
+// ============================================
+
+model Project {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  apiKey      String   @unique
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // 关联
+  difyConnections    DifyConnection[]
+  evaluatorTemplates EvaluatorTemplate[]
+  llmConfigs         LlmConfig[]
+  datasets           Dataset[]
+  evalConfigs        EvalConfig[]
+  evalJobs           EvalJob[]
+}
+
+// ============================================
+// Dify 连接配置
+// ============================================
+
+model DifyConnection {
+  id              String    @id @default(cuid())
+  projectId       String
+  name            String
+  difyUrl         String    // Dify 服务地址
+  apiKeyEncrypted String?   // AES 加密存储的 API Key
+  webhookSecret   String?   // Webhook 签名密钥
+  workflows       Json      @default("[]") // 已同步的工作流列表
+  isActive        Boolean   @default(true)
+  autoEval        Boolean   @default(false) // 是否自动触发评测
+  lastSyncAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+}
+
+// ============================================
+// 评测器模板
+// ============================================
+
+model EvaluatorTemplate {
+  id             String   @id @default(cuid())
+  projectId      String?  // null 表示预置评测器
+  name           String
+  description    String?
+  promptTemplate String   @db.Text // LLM 评测 Prompt
+  outputSchema   Json?    // 期望输出的 JSON Schema
+  scoreType      String   @default("numeric") // numeric | categorical | boolean
+  minScore       Float    @default(0)
+  maxScore       Float    @default(10)
+  categories     Json?    // 分类评测的类别列表
+  isPreset       Boolean  @default(false) // 是否预置
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([isPreset])
+}
+
+// ============================================
+// LLM 配置
+// ============================================
+
+model LlmConfig {
+  id              String   @id @default(cuid())
+  projectId       String
+  name            String
+  provider        String   // openai | azure | dashscope | ollama | custom
+  modelName       String
+  apiEndpoint     String?
+  apiKeyEncrypted String?
+  config          Json?    // 额外配置 (temperature 等)
+  isDefault       Boolean  @default(false)
+  createdAt       DateTime @default(now())
+
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evalConfigs EvalConfig[]
+
+  @@index([projectId])
+}
+
+// ============================================
+// 评测集
+// ============================================
+
+model Dataset {
+  id           String   @id @default(cuid())
+  projectId    String
+  name         String
+  description  String?
+  sourceType   String   @default("trace_filter") // trace_filter | manual | import
+  filterConfig Json?    // 筛选配置
+  itemCount    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items   DatasetItem[]
+
+  @@index([projectId])
+}
+
+model DatasetItem {
+  id             String   @id @default(cuid())
+  datasetId      String
+  traceId        String?  // 关联的 Trace ID (ClickHouse)
+  input          Json
+  output         Json?
+  expectedOutput Json?    // 期望输出 (用于对比)
+  metadata       Json?
+  createdAt      DateTime @default(now())
+
+  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+
+  @@index([datasetId])
+  @@index([traceId])
+}
+
+// ============================================
+// 评测配置
+// ============================================
+
+model EvalConfig {
+  id           String   @id @default(cuid())
+  projectId    String
+  name         String
+  evaluatorIds String[] // 选择的评测器 ID 列表
+  llmConfigId  String
+  samplingRate Float    @default(1.0) // 采样率
+  filterRules  Json?    // 自动评测触发规则
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  llmConfig LlmConfig @relation(fields: [llmConfigId], references: [id])
+  evalJobs  EvalJob[]
+
+  @@index([projectId])
+}
+
+// ============================================
+// 评测任务
+// ============================================
+
+model EvalJob {
+  id             String    @id @default(cuid())
+  projectId      String
+  name           String?
+  sourceType     String?   // dataset | trace_filter | manual
+  sourceId       String?   // Dataset ID 或 Trace ID
+  evalConfigId   String?
+  totalCount     Int       @default(0)
+  completedCount Int       @default(0)
+  failedCount    Int       @default(0)
+  status         String    @default("pending") // pending | running | completed | failed
+  startedAt      DateTime?
+  completedAt    DateTime?
+  errorMessage   String?
+  createdAt      DateTime  @default(now())
+
+  project    Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  evalConfig EvalConfig? @relation(fields: [evalConfigId], references: [id])
+
+  @@index([projectId])
+  @@index([status])
+}
