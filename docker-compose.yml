@@ -1,0 +1,65 @@
+version: '3.8'
+
+# SimpleFuse 本地开发环境
+# 使用方法: docker-compose up -d
+
+services:
+  # PostgreSQL - 业务数据存储
+  postgres:
+    image: postgres:15
+    container_name: simplefuse-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: simplefuse
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # ClickHouse - 分析数据存储 (Traces, Observations, Scores)
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.1
+    container_name: simplefuse-clickhouse
+    ports:
+      - "8123:8123"  # HTTP 接口
+      - "9000:9000"  # Native 接口
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    environment:
+      CLICKHOUSE_DB: simplefuse
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8123/ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis - 任务队列 (BullMQ)
+  redis:
+    image: redis:7-alpine
+    container_name: simplefuse-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    name: simplefuse_postgres_data
+  clickhouse_data:
+    name: simplefuse_clickhouse_data
+  redis_data:
+    name: simplefuse_redis_data
