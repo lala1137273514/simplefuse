@@ -9,6 +9,10 @@ export default defineConfig({
     globals: true,
     include: ['**/*.test.ts', '**/*.test.tsx'],
     exclude: ['node_modules', '.next'],
+    setupFiles: ['dotenv/config'],
+    env: {
+      DOTENV_CONFIG_PATH: '.env.local',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

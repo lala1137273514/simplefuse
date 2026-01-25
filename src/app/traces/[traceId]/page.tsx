@@ -8,14 +8,13 @@ import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Separator } from '@/components/ui/separator'
 import {
-  ArrowLeft,
   Clock,
   Zap,
   CheckCircle2,
   XCircle,
   Copy,
-  ChevronRight,
 } from 'lucide-react'
+import { Breadcrumb } from '@/components/ui/breadcrumb'
 
 // 模拟数据 - 实际会从 tRPC 获取
 const mockTrace = {
@@ -100,14 +99,13 @@ export default function TraceDetailPage({ params }: PageProps) {
   return (
     <div className="space-y-6">
       {/* 面包屑导航 */}
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Link href="/traces" className="hover:text-foreground flex items-center gap-1">
-          <ArrowLeft className="h-4 w-4" />
-          Traces
-        </Link>
-        <ChevronRight className="h-4 w-4" />
-        <span className="text-foreground">{traceId}</span>
-      </div>
+      <Breadcrumb 
+        items={[
+          { label: 'Traces', href: '/traces' },
+          { label: trace.name || traceId }
+        ]}
+        backHref="/traces"
+      />
 
       {/* 标题和元信息 */}
       <div className="flex items-start justify-between">

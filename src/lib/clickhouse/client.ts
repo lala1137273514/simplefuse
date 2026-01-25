@@ -99,6 +99,81 @@ export async function insertTraces(traces: TraceData[]): Promise<void> {
 }
 
 /**
+ * 评测分数数据类型
+ */
+export interface ScoreData {
+  id: string
+  project_id: string
+  trace_id: string
+  evaluator_id: string
+  evaluator_name: string
+  score: number
+  reason: string
+  eval_job_id?: string  // 关联的评测任务 ID
+  created_at: string
+}
+
+/**
+ * 插入单条评测分数
+ */
+export async function insertScore(score: ScoreData): Promise<void> {
+  const ch = getClickHouseClient()
+  const now = toClickHouseDateTime(score.created_at)
+  
+  await ch.insert({
+    table: 'scores',
+    values: [{
+      id: score.id,
+      project_id: score.project_id,
+      trace_id: score.trace_id,
+      evaluator_id: score.evaluator_id,
+      evaluator_name: score.evaluator_name,
+      score: score.score,
+      reasoning: score.reason,  // 字段名与表定义保持一致
+      eval_job_id: score.eval_job_id || null,  // 关联评测任务
+      timestamp: now,
+      created_at: now,
+      event_ts: now,
+      is_deleted: 0,
+    }],
+    format: 'JSONEachRow',
+  })
+}
+
+/**
+ * 批量插入评测分数
+ */
+export async function insertScores(scores: ScoreData[]): Promise<void> {
+  if (scores.length === 0) return
+  
+  const ch = getClickHouseClient()
+  
+  const values = scores.map(score => {
+    const now = toClickHouseDateTime(score.created_at)
+    return {
+      id: score.id,
+      project_id: score.project_id,
+      trace_id: score.trace_id,
+      evaluator_id: score.evaluator_id,
+      evaluator_name: score.evaluator_name,
+      score: score.score,
+      reasoning: score.reason,  // 字段名与表定义保持一致
+      eval_job_id: score.eval_job_id || null,  // 关联评测任务
+      timestamp: now,
+      created_at: now,
+      event_ts: now,
+      is_deleted: 0,
+    }
+  })
+  
+  await ch.insert({
+    table: 'scores',
+    values,
+    format: 'JSONEachRow',
+  })
+}
+
+/**
  * Trace 数据类型
  */
 export interface TraceData {

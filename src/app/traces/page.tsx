@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -30,52 +30,11 @@ import {
   CheckCircle2,
   XCircle,
   RefreshCw,
+  Loader2,
+  Database,
 } from 'lucide-react'
 import Link from 'next/link'
-
-// 模拟数据 - 实际会从 tRPC 获取
-const mockTraces = [
-  {
-    id: 'trace-001',
-    name: '客服对话',
-    workflowName: '智能客服工作流',
-    timestamp: '2026-01-24T12:30:00',
-    status: 'success',
-    totalTokens: 1250,
-    latencyMs: 2340,
-    input: '你好，我想咨询一下产品价格',
-  },
-  {
-    id: 'trace-002',
-    name: '知识问答',
-    workflowName: '知识库检索工作流',
-    timestamp: '2026-01-24T12:25:00',
-    status: 'success',
-    totalTokens: 890,
-    latencyMs: 1560,
-    input: '公司的退换货政策是什么？',
-  },
-  {
-    id: 'trace-003',
-    name: '意图识别',
-    workflowName: '意图分类工作流',
-    timestamp: '2026-01-24T12:20:00',
-    status: 'error',
-    totalTokens: 320,
-    latencyMs: 890,
-    input: '我要投诉！',
-  },
-  {
-    id: 'trace-004',
-    name: '摘要生成',
-    workflowName: '对话摘要工作流',
-    timestamp: '2026-01-24T12:15:00',
-    status: 'success',
-    totalTokens: 2100,
-    latencyMs: 3200,
-    input: '[长对话内容]',
-  },
-]
+import { trpc } from '@/lib/trpc-client'
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -121,19 +80,35 @@ function formatLatency(ms: number) {
 export default function TracesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [isLoading, setIsLoading] = useState(false)
+  const [page, setPage] = useState(0)
+  const pageSize = 20
+
+  const utils = trpc.useUtils()
+
+  // 查询 Traces
+  const { data, isLoading, isFetching } = trpc.traces.list.useQuery({
+    projectId: 'default',
+    limit: pageSize,
+    offset: page * pageSize,
+    status: statusFilter !== 'all' ? statusFilter : undefined,
+    name: searchQuery || undefined,
+  })
 
   const handleRefresh = () => {
-    setIsLoading(true)
-    // 模拟刷新
-    setTimeout(() => setIsLoading(false), 1000)
+    utils.traces.list.invalidate()
   }
 
-  const filteredTraces = mockTraces.filter(trace => {
-    if (statusFilter !== 'all' && trace.status !== statusFilter) return false
-    if (searchQuery && !trace.name.includes(searchQuery) && !trace.input.includes(searchQuery)) return false
-    return true
-  })
+  const traces = data?.traces || []
+  const total = data?.total || 0
+  const totalPages = Math.ceil(total / pageSize)
+
+  if (isLoading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -145,8 +120,8 @@ export default function TracesPage() {
             查看和分析 LLM 调用记录
           </p>
         </div>
-        <Button variant="outline" onClick={handleRefresh} disabled={isLoading}>
-          <RefreshCw className={`h-4 w-4 mr-2 ${isLoading ? 'animate-spin' : ''}`} />
+        <Button variant="outline" onClick={handleRefresh} disabled={isFetching}>
+          <RefreshCw className={`h-4 w-4 mr-2 ${isFetching ? 'animate-spin' : ''}`} />
           刷新
         </Button>
       </div>
@@ -158,13 +133,16 @@ export default function TracesPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input 
-                placeholder="搜索 Trace 名称或内容..."
+                placeholder="搜索 Trace 名称..."
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value)
+                  setPage(0)
+                }}
                 className="pl-9"
               />
             </div>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0) }}>
               <SelectTrigger className="w-32">
                 <Filter className="h-4 w-4 mr-2" />
                 <SelectValue placeholder="状态" />
@@ -181,96 +159,100 @@ export default function TracesPage() {
 
       {/* Trace 列表 */}
       <Card className="glass">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center justify-between">
-            <span>Trace 列表</span>
-            <span className="text-sm font-normal text-muted-foreground">
-              共 {filteredTraces.length} 条记录
-            </span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[200px]">名称</TableHead>
-                <TableHead>工作流</TableHead>
-                <TableHead className="w-[150px]">
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-4 w-4" />
-                    时间
-                  </div>
-                </TableHead>
-                <TableHead className="w-[100px]">状态</TableHead>
-                <TableHead className="w-[100px] text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <Zap className="h-4 w-4" />
-                    Tokens
-                  </div>
-                </TableHead>
-                <TableHead className="w-[100px] text-right">延迟</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredTraces.length === 0 ? (
+        <CardContent className="p-0">
+          {traces.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-12">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted mb-4">
+                <Database className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h3 className="text-lg font-medium mb-2">暂无 Trace 数据</h3>
+              <p className="text-muted-foreground text-center">
+                连接 Dify 或通过 API 发送 Trace 数据
+              </p>
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
-                    暂无数据
-                  </TableCell>
+                  <TableHead>名称</TableHead>
+                  <TableHead>工作流</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-4 w-4" />
+                      延迟
+                    </div>
+                  </TableHead>
+                  <TableHead>
+                    <div className="flex items-center gap-1">
+                      <Zap className="h-4 w-4" />
+                      Tokens
+                    </div>
+                  </TableHead>
+                  <TableHead>时间</TableHead>
+                  <TableHead>输入预览</TableHead>
                 </TableRow>
-              ) : (
-                filteredTraces.map((trace) => (
-                  <TableRow key={trace.id} className="cursor-pointer hover:bg-muted/50">
+              </TableHeader>
+              <TableBody>
+                {traces.map((trace) => (
+                  <TableRow key={trace.id} className="group cursor-pointer hover:bg-muted/50">
                     <TableCell>
-                      <Link 
-                        href={`/traces/${trace.id}`}
-                        className="font-medium text-primary hover:underline"
-                      >
-                        {trace.name}
+                      <Link href={`/traces/${trace.id}`} className="font-medium hover:underline">
+                        {trace.name || trace.id.slice(0, 8)}
                       </Link>
-                      <p className="text-xs text-muted-foreground truncate max-w-[180px]">
-                        {trace.input}
-                      </p>
                     </TableCell>
                     <TableCell className="text-muted-foreground">
-                      {trace.workflowName}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground text-sm">
-                      {formatTime(trace.timestamp)}
+                      {trace.workflowName || '-'}
                     </TableCell>
                     <TableCell>
                       {getStatusBadge(trace.status)}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {trace.totalTokens.toLocaleString()}
+                    <TableCell>
+                      {formatLatency(trace.latencyMs || 0)}
                     </TableCell>
-                    <TableCell className="text-right font-mono text-sm">
-                      {formatLatency(trace.latencyMs)}
+                    <TableCell>
+                      {(trace.totalTokens || 0).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {formatTime(trace.timestamp)}
+                    </TableCell>
+                    <TableCell className="max-w-xs truncate text-muted-foreground">
+                      {trace.input?.slice(0, 50) || '-'}
                     </TableCell>
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                ))}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
+      </Card>
 
-        {/* 分页 */}
-        <div className="flex items-center justify-between px-6 py-4 border-t">
+      {/* 分页 */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            显示 1-{filteredTraces.length} 条，共 {filteredTraces.length} 条
+            共 {total} 条记录，第 {page + 1} / {totalPages} 页
           </p>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.max(0, p - 1))}
+              disabled={page === 0}
+            >
               <ChevronLeft className="h-4 w-4" />
-              上一页
             </Button>
-            <Button variant="outline" size="sm" disabled>
-              下一页
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+              disabled={page >= totalPages - 1}
+            >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
         </div>
-      </Card>
+      )}
     </div>
   )
 }

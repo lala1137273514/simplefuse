@@ -30,7 +30,7 @@ const navItems = [
   },
   {
     title: '评测中心',
-    href: '/evaluation',
+    href: '/evaluation-center',
     icon: TestTube2,
   },
   {

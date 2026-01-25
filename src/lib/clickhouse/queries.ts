@@ -15,6 +15,7 @@ export interface TraceListParams {
   endTime?: string
   orderBy?: 'timestamp' | 'latency_ms' | 'total_tokens'
   orderDir?: 'asc' | 'desc'
+  traceIds?: string[]
 }
 
 export interface TraceRecord {
@@ -54,6 +55,7 @@ export async function queryTraces(params: TraceListParams): Promise<{
     endTime,
     orderBy = 'timestamp',
     orderDir = 'desc',
+    traceIds,
   } = params
 
   // 构建 WHERE 条件
@@ -73,6 +75,11 @@ export async function queryTraces(params: TraceListParams): Promise<{
   if (name) {
     conditions.push('name LIKE {name:String}')
     values.name = `%${name}%`
+  }
+
+  if (traceIds && traceIds.length > 0) {
+    conditions.push(`id IN ({traceIds:Array(String)})`)
+    values.traceIds = traceIds
   }
 
   if (startTime) {
