@@ -21,13 +21,18 @@ export async function GET(request: Request) {
     }
 
     // 返回模拟的项目信息（Langfuse 格式）
+    // 按照 Langfuse OpenAPI 规范，Project 必须包含 id, name, organization, metadata 字段
     return NextResponse.json({
       data: [
         {
           id: 'default',
           name: 'SimpleFuse Default Project',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          organization: {
+            id: 'default-org',
+            name: 'SimpleFuse Organization'
+          },
+          metadata: {},
+          retentionDays: null
         }
       ]
     })

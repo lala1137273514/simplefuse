@@ -20,7 +20,8 @@ export const metadata: Metadata = {
   description: "基于 Langfuse 理念的简化版 LLM 评测平台，支持 Dify 工作流集成",
 };
 
-export const dynamic = 'force-dynamic'
+// 移除 force-dynamic，使用 Next.js 默认的智能缓存策略
+// API 路由会自动处理动态内容
 
 export default function RootLayout({
   children,
