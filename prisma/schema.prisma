@@ -7,6 +7,7 @@ generator client {
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // ============================================
@@ -38,9 +39,9 @@ model DifyConnection {
   id              String    @id @default(cuid())
   projectId       String
   name            String
-  difyUrl         String    // Dify 服务地址
-  apiKeyEncrypted String?   // AES 加密存储的 API Key
-  webhookSecret   String?   // Webhook 签名密钥
+  difyUrl         String // Dify 服务地址
+  apiKeyEncrypted String? // AES 加密存储的 API Key
+  webhookSecret   String? // Webhook 签名密钥
   workflows       Json      @default("[]") // 已同步的工作流列表
   isActive        Boolean   @default(true)
   autoEval        Boolean   @default(false) // 是否自动触发评测
@@ -59,15 +60,15 @@ model DifyConnection {
 
 model EvaluatorTemplate {
   id             String   @id @default(cuid())
-  projectId      String?  // null 表示预置评测器
+  projectId      String? // null 表示预置评测器
   name           String
   description    String?
   promptTemplate String   @db.Text // LLM 评测 Prompt
-  outputSchema   Json?    // 期望输出的 JSON Schema
+  outputSchema   Json? // 期望输出的 JSON Schema
   scoreType      String   @default("numeric") // numeric | categorical | boolean
   minScore       Float    @default(0)
   maxScore       Float    @default(10)
-  categories     Json?    // 分类评测的类别列表
+  categories     Json? // 分类评测的类别列表
   isPreset       Boolean  @default(false) // 是否预置
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
@@ -87,11 +88,11 @@ model LlmConfig {
   id              String   @id @default(cuid())
   projectId       String
   name            String
-  provider        String   // openai | azure | dashscope | ollama | custom
+  provider        String // openai | azure | dashscope | ollama | custom
   modelName       String
   apiEndpoint     String?
   apiKeyEncrypted String?
-  config          Json?    // 额外配置 (temperature 等)
+  config          Json? // 额外配置 (temperature 等)
   isDefault       Boolean  @default(false)
   createdAt       DateTime @default(now())
 
@@ -111,7 +112,7 @@ model Dataset {
   name         String
   description  String?
   sourceType   String   @default("trace_filter") // trace_filter | manual | import
-  filterConfig Json?    // 筛选配置
+  filterConfig Json? // 筛选配置
   itemCount    Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -125,10 +126,10 @@ model Dataset {
 model DatasetItem {
   id             String   @id @default(cuid())
   datasetId      String
-  traceId        String?  // 关联的 Trace ID (ClickHouse)
+  traceId        String? // 关联的 Trace ID (ClickHouse)
   input          Json
   output         Json?
-  expectedOutput Json?    // 期望输出 (用于对比)
+  expectedOutput Json? // 期望输出 (用于对比)
   metadata       Json?
   createdAt      DateTime @default(now())
 
@@ -149,7 +150,7 @@ model EvalConfig {
   evaluatorIds String[] // 选择的评测器 ID 列表
   llmConfigId  String
   samplingRate Float    @default(1.0) // 采样率
-  filterRules  Json?    // 自动评测触发规则
+  filterRules  Json? // 自动评测触发规则
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
 
@@ -168,8 +169,8 @@ model EvalJob {
   id             String    @id @default(cuid())
   projectId      String
   name           String?
-  sourceType     String?   // dataset | trace_filter | manual
-  sourceId       String?   // Dataset ID 或 Trace ID
+  sourceType     String? // dataset | trace_filter | manual
+  sourceId       String? // Dataset ID 或 Trace ID
   evalConfigId   String?
   totalCount     Int       @default(0)
   completedCount Int       @default(0)

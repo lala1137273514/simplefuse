@@ -20,6 +20,8 @@ export const metadata: Metadata = {
   description: "基于 Langfuse 理念的简化版 LLM 评测平台，支持 Dify 工作流集成",
 };
 
+export const dynamic = 'force-dynamic'
+
 export default function RootLayout({
   children,
 }: Readonly<{
