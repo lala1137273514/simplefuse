@@ -277,7 +277,7 @@ export default function EvaluationCenterPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {jobs.map(job => (
+                  {jobs.map((job: any) => (
                     <Link
                       key={job.id}
                       href={`/results?jobId=${job.id}`}
