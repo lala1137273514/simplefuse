@@ -141,10 +141,10 @@ export default function JobDetailPage() {
   }
 
   // 计算每个 Trace 的平均分
-  const tracesWithAvg = traces.map(trace => ({
+  const tracesWithAvg = traces.map((trace: any) => ({
     ...trace,
     avgScore: trace.scores.length > 0
-      ? trace.scores.reduce((sum, s) => sum + s.score, 0) / trace.scores.length
+      ? trace.scores.reduce((sum: any, s: any) => sum + s.score, 0) / trace.scores.length
       : 0,
   }))
 
@@ -196,7 +196,7 @@ export default function JobDetailPage() {
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-5">
-              {evaluators.map(evaluator => (
+              {evaluators.map((evaluator: any) => (
                 <div 
                   key={evaluator.name} 
                   className="text-center p-4 rounded-lg bg-muted/50"
@@ -229,7 +229,7 @@ export default function JobDetailPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {tracesWithAvg.map(trace => (
+              {tracesWithAvg.map((trace: any) => (
                 <div
                   key={trace.traceId}
                   className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 cursor-pointer transition-colors"
@@ -241,7 +241,7 @@ export default function JobDetailPage() {
                     </div>
                     {/* 一行展示所有维度分数 */}
                     <div className="flex gap-2 flex-wrap">
-                      {trace.scores.map(score => (
+                      {trace.scores.map((score: any) => (
                         <div 
                           key={score.id} 
                           className="flex items-center gap-1 text-sm"
@@ -276,7 +276,7 @@ export default function JobDetailPage() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* 各维度评分 */}
-            {selectedTrace?.scores.map(score => (
+            {selectedTrace?.scores.map((score: any) => (
               <div key={score.id} className="space-y-2 p-4 rounded-lg bg-muted/50">
                 <div className="flex items-center justify-between">
                   <Badge variant="outline">{score.evaluatorName}</Badge>

@@ -136,8 +136,8 @@ export default function EvaluatorsPage() {
     }
   }
 
-  const presetEvaluators = (data?.evaluators || []).filter(e => e.isPreset) as Evaluator[]
-  const customEvaluators = (data?.evaluators || []).filter(e => !e.isPreset) as Evaluator[]
+  const presetEvaluators = (data?.evaluators || []).filter((e: any) => e.isPreset) as Evaluator[]
+  const customEvaluators = (data?.evaluators || []).filter((e: any) => !e.isPreset) as Evaluator[]
 
   if (isLoading) {
     return (

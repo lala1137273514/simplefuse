@@ -421,7 +421,7 @@ export default function DifySettingsPage() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {connections.map(conn => (
+          {connections.map((conn: any) => (
             <ConnectionCard
               key={conn.id}
               connection={conn}

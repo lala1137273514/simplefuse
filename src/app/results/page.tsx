@@ -132,7 +132,7 @@ export default function ResultsPage() {
         </Card>
       ) : (
         <div className="grid gap-4">
-          {jobs.map(job => (
+          {jobs.map((job: any) => (
             <Link key={job.id} href={`/results/${job.id}`}>
               <Card className="glass cursor-pointer hover:border-primary/50 transition-colors">
                 <CardHeader className="pb-2">
