@@ -8,8 +8,12 @@ import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 // 数据库连接
+import { Pool } from 'pg'
+
+// 数据库连接
 const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/simplefuse'
-const adapter = new PrismaPg({ connectionString })
+const pool = new Pool({ connectionString })
+const adapter = new PrismaPg(pool)
 const prisma = new PrismaClient({ adapter })
 
 /**
