@@ -213,7 +213,7 @@ export default function DatasetsPage() {
         </Card>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredDatasets.map((dataset) => (
+          {filteredDatasets.map((dataset: Dataset) => (
             <DatasetCard
               key={dataset.id}
               dataset={dataset as Dataset}
