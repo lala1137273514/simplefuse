@@ -94,7 +94,7 @@ export default function EvaluationCenterPage() {
   // 自动选择默认 LLM 配置
   useEffect(() => {
     if (llmConfigs.length > 0 && !selectedLlmConfig) {
-      const defaultConfig = llmConfigs.find(c => c.isDefault)
+      const defaultConfig = llmConfigs.find((c: any) => c.isDefault)
       if (defaultConfig) {
         setSelectedLlmConfig(defaultConfig.id)
       } else {
