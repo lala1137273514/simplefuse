@@ -158,6 +158,68 @@ function ConnectionCard({
           </div>
         </div>
 
+        {/* Langfuse 兼容配置 */}
+        <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/30">
+          <div className="mb-3">
+            <h4 className="font-medium text-orange-900 dark:text-orange-200 flex items-center gap-2">
+              <span className="flex h-5 w-5 items-center justify-center rounded bg-orange-200 text-orange-700 text-xs font-bold">LF</span>
+              Langfuse 兼容模式配置
+            </h4>
+            <p className="text-sm text-orange-800 dark:text-orange-300 mt-1">
+              如果您在 Dify 的「追踪」页面选择 <strong>Langfuse</strong>，请使用以下配置：
+            </p>
+          </div>
+          
+          <div className="grid gap-3 sm:grid-cols-3">
+             <div className="space-y-1">
+               <label className="text-xs font-medium text-orange-800/80">Host 地址</label>
+               <div className="relative">
+                 <Input 
+                   value={typeof window !== 'undefined' ? window.location.origin : ''} 
+                   readOnly 
+                   className="h-8 text-xs font-mono bg-white dark:bg-black/20"
+                 />
+                 <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-8 w-8"
+                    onClick={() => copyToClipboard(typeof window !== 'undefined' ? window.location.origin : '', 'lf-host')}
+                  >
+                   {copied === 'lf-host' ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+               </div>
+             </div>
+             <div className="space-y-1">
+               <label className="text-xs font-medium text-orange-800/80">Public Key</label>
+               <div className="relative">
+                 <Input value="pk-simplefuse" readOnly className="h-8 text-xs font-mono bg-white dark:bg-black/20" />
+                 <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-8 w-8"
+                    onClick={() => copyToClipboard('pk-simplefuse', 'lf-pk')}
+                  >
+                   {copied === 'lf-pk' ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+               </div>
+             </div>
+             <div className="space-y-1">
+               <label className="text-xs font-medium text-orange-800/80">Secret Key</label>
+               <div className="relative">
+                 <Input value="sk-simplefuse" readOnly className="h-8 text-xs font-mono bg-white dark:bg-black/20" />
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-8 w-8"
+                    onClick={() => copyToClipboard('sk-simplefuse', 'lf-sk')}
+                  >
+                   {copied === 'lf-sk' ? <CheckCircle2 className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+               </div>
+             </div>
+          </div>
+        </div>
+
         {/* 工作流列表 */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
