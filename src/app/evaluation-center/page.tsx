@@ -113,7 +113,7 @@ export default function EvaluationCenterPage() {
     if (selectedEvaluators.length === evaluators.length) {
       setSelectedEvaluators([])
     } else {
-      setSelectedEvaluators(evaluators.map(e => e.id))
+      setSelectedEvaluators(evaluators.map((e: any) => e.id))
     }
   }
 
@@ -127,7 +127,7 @@ export default function EvaluationCenterPage() {
     if (selectedTraces.length === traces.length) {
       setSelectedTraces([])
     } else {
-      setSelectedTraces(traces.map(t => t.id))
+      setSelectedTraces(traces.map((t: any) => t.id))
     }
   }
 

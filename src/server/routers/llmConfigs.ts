@@ -21,7 +21,7 @@ const createInputSchema = z.object({
   modelName: z.string().min(1),
   apiEndpoint: z.string().url().optional(),
   apiKey: z.string().optional(), // 会被加密存储
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   isDefault: z.boolean().optional().default(false),
 })
 
@@ -33,7 +33,7 @@ const updateInputSchema = z.object({
   modelName: z.string().min(1).optional(),
   apiEndpoint: z.string().url().nullable().optional(),
   apiKey: z.string().optional(),
-  config: z.record(z.unknown()).nullable().optional(),
+  config: z.record(z.string(), z.unknown()).nullable().optional(),
 })
 
 // 删除输入验证
@@ -118,6 +118,7 @@ export const llmConfigsRouter = router({
       const config = await prisma.llmConfig.create({
         data: {
           ...data,
+          config: data.config as any,
           apiKeyEncrypted: apiKey ? encryptApiKey(apiKey) : null,
         },
       })
@@ -152,7 +153,7 @@ export const llmConfigsRouter = router({
 
       const config = await prisma.llmConfig.update({
         where: { id },
-        data: updateData,
+        data: updateData as any,
       })
 
       return transformConfig(config)

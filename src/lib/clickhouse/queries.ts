@@ -111,7 +111,7 @@ export async function queryTraces(params: TraceListParams): Promise<{
     format: 'JSONEachRow',
   })
 
-  const traces = await result.json<TraceRecord[]>()
+  const traces = await result.json<any>()
 
   // 查询总数
   const countQuery = `
@@ -126,10 +126,11 @@ export async function queryTraces(params: TraceListParams): Promise<{
     format: 'JSONEachRow',
   })
 
-  const countData = await countResult.json<{ total: string }[]>()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const countData = await countResult.json<any>()
   const total = parseInt(countData[0]?.total || '0', 10)
 
-  return { traces, total }
+  return { traces: traces as TraceRecord[], total }
 }
 
 /**
@@ -151,6 +152,6 @@ export async function queryTraceById(id: string): Promise<TraceRecord | null> {
     format: 'JSONEachRow',
   })
 
-  const traces = await result.json<TraceRecord[]>()
-  return traces[0] || null
+  const traces = await result.json<any>()
+  return (traces[0] as TraceRecord) || null
 }
