@@ -5,16 +5,9 @@
  */
 
 import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
 
-// 数据库连接
-import { Pool } from 'pg'
-
-// 数据库连接
-const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/simplefuse'
-const pool = new Pool({ connectionString })
-const adapter = new PrismaPg(pool)
-const prisma = new PrismaClient({ adapter })
+// 直接使用标准 Prisma 客户端（从 DATABASE_URL 读取连接信息）
+const prisma = new PrismaClient()
 
 /**
  * 8 个预置评测器配置

@@ -19,22 +19,27 @@
 ### 遇到的问题与解决方案
 
 #### 卡点 1: Docker Desktop 未启动
+
 - **问题**: `docker-compose up -d` 失败
 - **解决**: 等待用户启动 Docker Desktop 后重新执行
 
 #### 卡点 2: Prisma 7 配置格式变化
+
 - **问题**: `npx prisma migrate dev` 失败，datasource URL 配置方式变化
 - **解决**: 创建 `prisma/prisma.config.ts`，使用环境变量传递连接字符串
 
 #### 卡点 3: ClickHouse 数据库不存在
+
 - **问题**: 迁移脚本报错 "Database simplefuse does not exist"
 - **解决**: 手动执行 `CREATE DATABASE IF NOT EXISTS simplefuse`
 
 #### 卡点 4: Turbopack 中文路径崩溃 ⚠️ 重要
+
 - **问题**: 页面加载时 Turbopack 解析中文路径崩溃
 - **解决**: 修改 package.json，添加 `--webpack` 参数禁用 Turbopack
 
 ### 验证结果
+
 - ✅ 项目正常启动 (localhost:3000)
 - ✅ Docker 服务运行正常
 - ✅ 数据库表创建成功
@@ -57,14 +62,15 @@
 
 ### 测试结果
 
-| 测试文件 | 测试数 | 状态 |
-|----------|--------|------|
-| traces-api.test.ts | 6 | ✅ |
-| webhook-api.test.ts | 5 | ✅ |
-| traces-trpc.test.ts | 4 | ✅ |
-| **总计** | **15** | **全部通过** |
+| 测试文件            | 测试数 | 状态         |
+| ------------------- | ------ | ------------ |
+| traces-api.test.ts  | 6      | ✅           |
+| webhook-api.test.ts | 5      | ✅           |
+| traces-trpc.test.ts | 4      | ✅           |
+| **总计**            | **15** | **全部通过** |
 
 ### 验证结果
+
 - ✅ 开发服务器正常运行 (webpack 模式)
 - ✅ /traces 列表页面正常显示
 - ✅ /traces/[traceId] 详情页面正常显示
@@ -84,20 +90,22 @@
 
 ### 新增文件
 
-| 文件 | 功能 |
-|------|------|
-| `prisma/seed.ts` | 8 个预置评测器数据 |
-| `src/server/routers/evaluators.ts` | 评测器 CRUD API |
-| `src/app/evaluators/page.tsx` | 评测器管理页面 |
-| `src/app/evaluators/new/page.tsx` | 评测器创建表单 |
+| 文件                               | 功能               |
+| ---------------------------------- | ------------------ |
+| `prisma/seed.ts`                   | 8 个预置评测器数据 |
+| `src/server/routers/evaluators.ts` | 评测器 CRUD API    |
+| `src/app/evaluators/page.tsx`      | 评测器管理页面     |
+| `src/app/evaluators/new/page.tsx`  | 评测器创建表单     |
 
 ### 遇到的问题与解决方案
 
 #### 卡点: Prisma 7 Driver Adapter
+
 - **问题**: Prisma 7 不再支持直接 `new PrismaClient()`
 - **解决**: 安装 `@prisma/adapter-pg`，使用 adapter 模式初始化
 
 ### 8 个预置评测维度
+
 1. Relevance (相关性)
 2. Accuracy (准确性)
 3. Coherence (连贯性)
@@ -109,11 +117,11 @@
 
 ### 测试结果
 
-| 测试文件 | 测试数 | 状态 |
-|----------|--------|------|
-| evaluators-seed.test.ts | 5 | ✅ |
-| evaluators-trpc.test.ts | 7 | ✅ |
-| **总计** | **12** | **全部通过** |
+| 测试文件                | 测试数 | 状态         |
+| ----------------------- | ------ | ------------ |
+| evaluators-seed.test.ts | 5      | ✅           |
+| evaluators-trpc.test.ts | 7      | ✅           |
+| **总计**                | **12** | **全部通过** |
 
 ---
 
@@ -131,22 +139,25 @@
 6. **Task 4.6 评测任务历史**: 任务列表 API + 状态追踪
 
 ### ⚠️ TDD 补做
+
 用户指出 Phase 4 未严格遵循 TDD，补写了 20 个测试：
+
 - 13 个 Provider 测试
 - 7 个 evalJobs 测试
 
 ### 新增文件
 
-| 文件 | 功能 |
-|------|------|
-| `src/server/routers/llmConfigs.ts` | LLM 配置 CRUD API |
-| `src/lib/llm/providers.ts` | 5 种 LLM Provider 适配器 |
-| `src/lib/queue/evaluation.ts` | BullMQ 评测任务队列 |
-| `src/server/routers/evalJobs.ts` | 评测任务管理 API |
-| `src/app/settings/llm/page.tsx` | LLM 配置管理页面 |
-| `src/app/evaluation-center/page.tsx` | 评测中心页面 |
+| 文件                                 | 功能                     |
+| ------------------------------------ | ------------------------ |
+| `src/server/routers/llmConfigs.ts`   | LLM 配置 CRUD API        |
+| `src/lib/llm/providers.ts`           | 5 种 LLM Provider 适配器 |
+| `src/lib/queue/evaluation.ts`        | BullMQ 评测任务队列      |
+| `src/server/routers/evalJobs.ts`     | 评测任务管理 API         |
+| `src/app/settings/llm/page.tsx`      | LLM 配置管理页面         |
+| `src/app/evaluation-center/page.tsx` | 评测中心页面             |
 
 ### 支持的 LLM Provider
+
 1. **OpenAI** - GPT-4, GPT-3.5
 2. **Azure OpenAI** - 企业级部署
 3. **Dashscope** - 通义千问
@@ -155,12 +166,12 @@
 
 ### 测试结果
 
-| 测试文件 | 测试数 | 状态 |
-|----------|--------|------|
-| llmConfigs-trpc.test.ts | 6 | ✅ |
-| llm-providers.test.ts | 13 | ✅ |
-| evalJobs-trpc.test.ts | 7 | ✅ |
-| **总计** | **26** | **全部通过** |
+| 测试文件                | 测试数 | 状态         |
+| ----------------------- | ------ | ------------ |
+| llmConfigs-trpc.test.ts | 6      | ✅           |
+| llm-providers.test.ts   | 13     | ✅           |
+| evalJobs-trpc.test.ts   | 7      | ✅           |
+| **总计**                | **26** | **全部通过** |
 
 ---
 
@@ -178,14 +189,15 @@
 
 ### 新增文件
 
-| 文件 | 功能 |
-|------|------|
-| `src/server/routers/statistics.ts` | Dashboard 统计 API |
-| `src/server/routers/datasets.ts` | 评测集 CRUD API |
-| `src/app/dashboard/page.tsx` | 增强版 Dashboard (图表) |
-| `src/app/datasets/page.tsx` | 评测集管理页面 |
+| 文件                               | 功能                    |
+| ---------------------------------- | ----------------------- |
+| `src/server/routers/statistics.ts` | Dashboard 统计 API      |
+| `src/server/routers/datasets.ts`   | 评测集 CRUD API         |
+| `src/app/dashboard/page.tsx`       | 增强版 Dashboard (图表) |
+| `src/app/datasets/page.tsx`        | 评测集管理页面          |
 
 ### Dashboard 图表组件
+
 1. **StatsCards** - 动画数字统计卡片
 2. **ScoreTrendChart** - 评分趋势折线图 (渐变)
 3. **DimensionRadar** - 维度评分雷达图
@@ -194,11 +206,11 @@
 
 ### 测试结果
 
-| 测试文件 | 测试数 | 状态 |
-|----------|--------|------|
-| statistics-trpc.test.ts | 6 | ✅ |
-| datasets-trpc.test.ts | 8 | ✅ |
-| **总计** | **14** | **全部通过** |
+| 测试文件                | 测试数 | 状态         |
+| ----------------------- | ------ | ------------ |
+| statistics-trpc.test.ts | 6      | ✅           |
+| datasets-trpc.test.ts   | 8      | ✅           |
+| **总计**                | **14** | **全部通过** |
 
 ---
 
@@ -209,29 +221,32 @@ Test Files  10 passed (10)
      Tests  67 passed (67)
 ```
 
-| Phase | 测试文件 | 测试数 |
-|-------|----------|--------|
-| P2 | traces-api, webhook-api, traces-trpc | 15 |
-| P3 | evaluators-seed, evaluators-trpc | 12 |
-| P4 | llmConfigs-trpc, llm-providers, evalJobs-trpc | 26 |
-| P5 | statistics-trpc, datasets-trpc | 14 |
-| **总计** | **10 个文件** | **67 个测试** |
+| Phase    | 测试文件                                      | 测试数        |
+| -------- | --------------------------------------------- | ------------- |
+| P2       | traces-api, webhook-api, traces-trpc          | 15            |
+| P3       | evaluators-seed, evaluators-trpc              | 12            |
+| P4       | llmConfigs-trpc, llm-providers, evalJobs-trpc | 26            |
+| P5       | statistics-trpc, datasets-trpc                | 14            |
+| **总计** | **10 个文件**                                 | **67 个测试** |
 
 ---
 
 ## 经验总结
 
 ### 技术问题
+
 - **中文路径问题**: Turbopack 无法处理中文路径，必须使用 `--webpack` 参数
 - **Prisma 7 变化**: 需要使用 `@prisma/adapter-pg` driver adapter
 - **ClickHouse 初始化**: 需要手动创建数据库
 
 ### TDD 教训
+
 - **严格遵循 RED → GREEN → REFACTOR**
 - Phase 4 未严格遵循 TDD，被用户指出后补做了 20 个测试
 - 测试先行能有效保证代码质量
 
 ### 最佳实践
+
 - 每个任务完成后立即 git commit
 - 使用 Mock 隔离外部依赖 (Prisma, ClickHouse)
 - 保持测试文件与实现文件一一对应
@@ -250,15 +265,16 @@ Test Files  10 passed (10)
 
 ### 新增文件
 
-| 文件 | 功能 |
-|------|------|
-| `src/lib/dify.ts` | Dify API 客户端 (连接测试, 工作流同步) |
-| `src/server/routers/difyConnections.ts` | Dify 连接 CRUD API |
-| `src/server/routers/results.ts` | 评测结果查询 API |
-| `src/app/settings/dify/page.tsx` | Dify 设置页面 |
-| `src/app/results/page.tsx` | 评测结果页面 |
+| 文件                                    | 功能                                   |
+| --------------------------------------- | -------------------------------------- |
+| `src/lib/dify.ts`                       | Dify API 客户端 (连接测试, 工作流同步) |
+| `src/server/routers/difyConnections.ts` | Dify 连接 CRUD API                     |
+| `src/server/routers/results.ts`         | 评测结果查询 API                       |
+| `src/app/settings/dify/page.tsx`        | Dify 设置页面                          |
+| `src/app/results/page.tsx`              | 评测结果页面                           |
 
 ### Dify 连接 API 功能
+
 1. `list` - 连接列表 (隐藏 API Key)
 2. `create` - 创建连接 (自动生成 Webhook)
 3. `testConnection` - 测试连接
@@ -267,17 +283,18 @@ Test Files  10 passed (10)
 6. `delete` - 删除连接
 
 ### 评测结果 API 功能
+
 1. `list` - 结果列表 (支持筛选)
 2. `getByTraceId` - 按 Trace 查询
 3. `summary` - 汇总统计
 
 ### 测试结果
 
-| 测试文件 | 测试数 | 状态 |
-|----------|--------|------|
-| difyConnections-trpc.test.ts | 7 | ✅ |
-| results-trpc.test.ts | 4 | ✅ |
-| **总计** | **11** | **全部通过** |
+| 测试文件                     | 测试数 | 状态         |
+| ---------------------------- | ------ | ------------ |
+| difyConnections-trpc.test.ts | 7      | ✅           |
+| results-trpc.test.ts         | 4      | ✅           |
+| **总计**                     | **11** | **全部通过** |
 
 ---
 
@@ -288,14 +305,14 @@ Test Files  12 passed (12)
      Tests  78 passed (78)
 ```
 
-| Phase | 测试文件 | 测试数 |
-|-------|----------|--------|
-| P2 | traces-api, webhook-api, traces-trpc | 15 |
-| P3 | evaluators-seed, evaluators-trpc | 12 |
-| P4 | llmConfigs-trpc, llm-providers, evalJobs-trpc | 26 |
-| P5 | statistics-trpc, datasets-trpc | 14 |
-| P6 | difyConnections-trpc, results-trpc | 11 |
-| **总计** | **12 个文件** | **78 个测试** |
+| Phase    | 测试文件                                      | 测试数        |
+| -------- | --------------------------------------------- | ------------- |
+| P2       | traces-api, webhook-api, traces-trpc          | 15            |
+| P3       | evaluators-seed, evaluators-trpc              | 12            |
+| P4       | llmConfigs-trpc, llm-providers, evalJobs-trpc | 26            |
+| P5       | statistics-trpc, datasets-trpc                | 14            |
+| P6       | difyConnections-trpc, results-trpc            | 11            |
+| **总计** | **12 个文件**                                 | **78 个测试** |
 
 ---
 
@@ -324,32 +341,32 @@ SimpleFuse/
 
 ### 页面路由
 
-| 路由 | 功能 |
-|------|------|
-| `/dashboard` | 仪表盘 (统计 + 图表) |
-| `/traces` | Trace 列表 |
-| `/traces/[id]` | Trace 详情 (时间线) |
-| `/evaluators` | 评测器列表 |
-| `/evaluators/new` | 创建评测器 |
-| `/evaluation-center` | 评测任务提交 |
-| `/datasets` | 评测集管理 |
-| `/results` | 评测结果查看 |
-| `/settings` | 设置主页 |
-| `/settings/dify` | Dify 集成配置 |
-| `/settings/llm` | LLM 模型配置 |
+| 路由                 | 功能                 |
+| -------------------- | -------------------- |
+| `/dashboard`         | 仪表盘 (统计 + 图表) |
+| `/traces`            | Trace 列表           |
+| `/traces/[id]`       | Trace 详情 (时间线)  |
+| `/evaluators`        | 评测器列表           |
+| `/evaluators/new`    | 创建评测器           |
+| `/evaluation-center` | 评测任务提交         |
+| `/datasets`          | 评测集管理           |
+| `/results`           | 评测结果查看         |
+| `/settings`          | 设置主页             |
+| `/settings/dify`     | Dify 集成配置        |
+| `/settings/llm`      | LLM 模型配置         |
 
 ### tRPC API
 
-| Router | 主要功能 |
-|--------|----------|
-| `traces` | Trace 列表/详情 |
-| `evaluators` | 评测器 CRUD |
-| `llmConfigs` | LLM 配置 CRUD |
-| `evalJobs` | 评测任务管理 |
-| `statistics` | Dashboard 统计 |
-| `datasets` | 评测集 CRUD |
-| `difyConnections` | Dify 连接管理 |
-| `results` | 评测结果查询 |
+| Router            | 主要功能        |
+| ----------------- | --------------- |
+| `traces`          | Trace 列表/详情 |
+| `evaluators`      | 评测器 CRUD     |
+| `llmConfigs`      | LLM 配置 CRUD   |
+| `evalJobs`        | 评测任务管理    |
+| `statistics`      | Dashboard 统计  |
+| `datasets`        | 评测集 CRUD     |
+| `difyConnections` | Dify 连接管理   |
+| `results`         | 评测结果查询    |
 
 ### 技术栈
 
@@ -375,6 +392,7 @@ Test Files  12 passed (12)
 ### 问题发现
 
 在尝试测试 Dify 连接时发现，虽然后端 tRPC routers 已完成，但**前端没有连接到后端**：
+
 - 没有 tRPC API 路由处理器
 - 没有 tRPC React 客户端 hooks
 - UI 页面使用 mock 数据
@@ -383,20 +401,20 @@ Test Files  12 passed (12)
 
 #### 新增文件
 
-| 文件 | 作用 |
-|------|------|
-| `src/server/root.ts` | 合并所有 router 为 `appRouter` |
-| `src/app/api/trpc/[trpc]/route.ts` | tRPC API 路由处理器 |
-| `src/lib/trpc-client.ts` | tRPC React 客户端 hooks |
-| `src/app/providers.tsx` | QueryClient + tRPC Provider |
+| 文件                               | 作用                           |
+| ---------------------------------- | ------------------------------ |
+| `src/server/root.ts`               | 合并所有 router 为 `appRouter` |
+| `src/app/api/trpc/[trpc]/route.ts` | tRPC API 路由处理器            |
+| `src/lib/trpc-client.ts`           | tRPC React 客户端 hooks        |
+| `src/app/providers.tsx`            | QueryClient + tRPC Provider    |
 
 #### 修改文件
 
-| 文件 | 修改内容 |
-|------|----------|
-| `src/app/layout.tsx` | 添加 `Providers` 包裹 |
+| 文件                                    | 修改内容                                     |
+| --------------------------------------- | -------------------------------------------- |
+| `src/app/layout.tsx`                    | 添加 `Providers` 包裹                        |
 | `src/server/routers/difyConnections.ts` | `list` 返回添加 `webhookSecret`, `workflows` |
-| `src/app/settings/dify/page.tsx` | 改用真实 tRPC hooks |
+| `src/app/settings/dify/page.tsx`        | 改用真实 tRPC hooks                          |
 
 ### 测试结果
 
@@ -436,15 +454,18 @@ Prisma (PostgreSQL) + ClickHouse
 #### TDD 执行
 
 **RED Phase (测试先行)**:
+
 - 添加 `llmConfigs.testConnection` 测试用例 (2 tests)
 - 测试成功连接和失败连接场景
 
 **GREEN Phase (实现功能)**:
+
 - `src/server/routers/llmConfigs.ts` 添加 `testConnection` procedure
 - 调用 `/models` 端点验证 API Key 有效性
 - 支持 OpenAI, Azure, Dashscope, Ollama, Custom 5 种 Provider
 
 **前端更新**:
+
 - `src/app/settings/llm/page.tsx` 完全重写
 - 所有 Provider 显示 URL 输入框 (带默认值)
 - 添加"测试连接"按钮
@@ -459,9 +480,9 @@ Test Files  12 passed (12)
 
 #### 新增测试
 
-| 文件 | 新增测试数 |
-|------|------------|
-| `llmConfigs-trpc.test.ts` | +2 |
+| 文件                      | 新增测试数 |
+| ------------------------- | ---------- |
+| `llmConfigs-trpc.test.ts` | +2         |
 
 ---
 
@@ -471,10 +492,10 @@ Test Files  12 passed (12)
 
 #### 修改的页面
 
-| 页面 | 使用的 API |
-|------|-----------|
-| `/traces` | `traces.list` |
-| `/evaluators` | `evaluators.list`, `evaluators.delete` |
+| 页面                 | 使用的 API                                                                              |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `/traces`            | `traces.list`                                                                           |
+| `/evaluators`        | `evaluators.list`, `evaluators.delete`                                                  |
 | `/evaluation-center` | `evaluators.list`, `llmConfigs.list`, `traces.list`, `evalJobs.list`, `evalJobs.create` |
 
 #### 功能增强
@@ -505,14 +526,14 @@ Test Files  12 passed (12)
 
 ### 已集成页面 (共 6 个)
 
-| 页面 | 使用的 API |
-|------|-----------|
-| `/settings/dify` | difyConnections.* |
-| `/settings/llm` | llmConfigs.* + testConnection |
-| `/traces` | traces.list |
-| `/evaluators` | evaluators.list, delete |
+| 页面                 | 使用的 API                                  |
+| -------------------- | ------------------------------------------- |
+| `/settings/dify`     | difyConnections.\*                          |
+| `/settings/llm`      | llmConfigs.\* + testConnection              |
+| `/traces`            | traces.list                                 |
+| `/evaluators`        | evaluators.list, delete                     |
 | `/evaluation-center` | evaluators + llmConfigs + traces + evalJobs |
-| `/results` | results.list, summary |
+| `/results`           | results.list, summary                       |
 
 ### 最终测试结果
 
@@ -554,8 +575,9 @@ Test Files  12 passed (12)
 **问题**: 创建 LLM 配置时若字段为空，提交后报错 `Too small: expected string to have >=1 characters`
 
 **修复**: 在 `handleSubmit` 添加前端验证:
+
 - 配置名称必填
-- 模型名称必填  
+- 模型名称必填
 - 新建时 API Key 必填
 
 **文件**: `src/app/settings/llm/page.tsx`
@@ -574,11 +596,11 @@ Test Files  12 passed (12)
 // 创建默认项目 (如果不存在)
 await prisma.project.create({
   data: {
-    id: 'default',
-    name: '默认项目',
+    id: "default",
+    name: "默认项目",
     apiKey: `sf_${Date.now()}`,
   },
-})
+});
 ```
 
 **运行**: `npx tsx prisma/seed.ts`
@@ -592,6 +614,7 @@ await prisma.project.create({
 **原因**: 提交处理仍使用 `// TODO: 调用 tRPC API` 的模拟逻辑
 
 **修复**: 重写 `src/app/evaluators/new/page.tsx`:
+
 - 添加 `trpc.evaluators.create.useMutation`
 - 添加 Toast 成功/失败提示
 - 添加 Loading 状态
@@ -603,6 +626,7 @@ await prisma.project.create({
 ### Task 8.7: 真实数据注入 & 仪表盘/评测集页面集成
 
 **主要变更**:
+
 1. **测试数据生成**:
    - 创建 `prisma/seed-testdata.ts`
    - 生成 50 条 Traces (ClickHouse)，包含 LLM 对话、Metadata、Tags、性能指标
@@ -622,6 +646,7 @@ await prisma.project.create({
    - 更新 `src/lib/clickhouse/queries.ts` 支持 `traceIds` 筛选，并修复类型定义
 
 **验证**:
+
 - 运行 `npx tsx prisma/seed-testdata.ts` 成功注入数据
 - 仪表盘应显示约 50 条 Traces，评分 ~7.9
 - 评测集页面应显示 "客服对话测试集"
@@ -637,6 +662,7 @@ await prisma.project.create({
 **解决方案**: 改为同步执行评测，不再使用队列。
 
 **主要变更**:
+
 1. **创建评测执行器 `src/lib/eval-executor.ts`**:
    - `executeEvaluation()` - 调用 LLM API 执行单个评测
    - `executeEvaluationBatch()` - 批量执行评测
@@ -661,6 +687,7 @@ await prisma.project.create({
 **解决方案**: 合并为单一请求，使用 Promise.all 并行查询。
 
 **主要变更**:
+
 1. **新增 `statistics.dashboardOverview` endpoint**:
    - 使用 `Promise.all` 并行执行 6 个 ClickHouse 查询
    - 返回合并的 overview, scoreStats, scoreTrend, dimensionScores, latencyPercentiles, latencyDistribution
@@ -677,6 +704,7 @@ await prisma.project.create({
 **问题**: 数据源容器不可滚动，任务点击后不知道跳转到哪。
 
 **主要变更**:
+
 1. **添加滚动样式**:
    - Traces 列表容器添加 `max-h-[400px] overflow-y-auto`
    - 全选按钮添加 `sticky top-0` 固定
@@ -691,6 +719,7 @@ await prisma.project.create({
 **解决方案**: 创建可复用的 Breadcrumb 组件，在所有子页面添加。
 
 **主要变更**:
+
 1. **创建 `src/components/ui/breadcrumb.tsx`**:
    - 返回按钮 + 路径层级显示
    - 格式: `← 返回  首页 / 父页面 / 当前页面`
@@ -709,6 +738,7 @@ await prisma.project.create({
 **状态**: 延后到下个迭代
 
 **计划功能**:
+
 - Traces 列表页添加多选 checkbox
 - 添加"添加到评测集"操作按钮
 - 弹窗选择目标评测集
@@ -717,24 +747,26 @@ await prisma.project.create({
 ---
 
 ### 新增文件
-| 文件 | 说明 |
-|------|------|
-| `src/lib/eval-executor.ts` | 同步评测执行器 |
+
+| 文件                               | 说明           |
+| ---------------------------------- | -------------- |
+| `src/lib/eval-executor.ts`         | 同步评测执行器 |
 | `src/components/ui/breadcrumb.tsx` | 面包屑导航组件 |
 
 ### 修改文件
-| 文件 | 变更 |
-|------|------|
-| `src/lib/clickhouse/client.ts` | 添加 insertScore/insertScores |
-| `src/lib/clickhouse/index.ts` | 导出新函数 |
-| `src/server/routers/evalJobs.ts` | 同步执行评测 |
-| `src/server/routers/statistics.ts` | 添加 dashboardOverview |
-| `src/app/dashboard/page.tsx` | 使用 dashboardOverview |
-| `src/app/evaluation-center/page.tsx` | 添加滚动样式 |
-| `src/app/traces/[traceId]/page.tsx` | 添加 Breadcrumb |
-| `src/app/settings/dify/page.tsx` | 添加 Breadcrumb |
-| `src/app/settings/llm/page.tsx` | 添加 Breadcrumb |
-| `src/app/results/page.tsx` | 添加 Breadcrumb |
+
+| 文件                                 | 变更                          |
+| ------------------------------------ | ----------------------------- |
+| `src/lib/clickhouse/client.ts`       | 添加 insertScore/insertScores |
+| `src/lib/clickhouse/index.ts`        | 导出新函数                    |
+| `src/server/routers/evalJobs.ts`     | 同步执行评测                  |
+| `src/server/routers/statistics.ts`   | 添加 dashboardOverview        |
+| `src/app/dashboard/page.tsx`         | 使用 dashboardOverview        |
+| `src/app/evaluation-center/page.tsx` | 添加滚动样式                  |
+| `src/app/traces/[traceId]/page.tsx`  | 添加 Breadcrumb               |
+| `src/app/settings/dify/page.tsx`     | 添加 Breadcrumb               |
+| `src/app/settings/llm/page.tsx`      | 添加 Breadcrumb               |
+| `src/app/results/page.tsx`           | 添加 Breadcrumb               |
 
 ---
 
@@ -745,6 +777,7 @@ await prisma.project.create({
 ### 背景问题
 
 用户反馈评测链路存在多个问题：
+
 1. **数据质量问题** - LLM 返回格式不稳定（Markdown 代码块、JSON 截断）
 2. **用户体验问题** - 评测完成后不知道去哪看结果
 3. **链路设计问题** - 评测任务与结果无关联，页面割裂
@@ -752,11 +785,13 @@ await prisma.project.create({
 ### 解决方案 (TDD)
 
 #### Stage 1: 数据质量修复
+
 - `maxTokens` 256 → 512（避免响应截断）
 - 优化 system prompt，明确禁止 Markdown 代码块
 - 增强 `parseEvalResponse` 容错能力
 
 #### Stage 2: 链路关联修复
+
 - `ScoreData` 接口添加 `eval_job_id` 字段
 - `insertScore/insertScores` 写入 `eval_job_id`
 - `evalJobs.create` 传递 `evalJobId` 到评测执行器
@@ -764,6 +799,7 @@ await prisma.project.create({
 - 新增 `results.getJobSummary` - 获取任务汇总统计
 
 #### Stage 3: 用户体验增强
+
 - 重构 `/results` 为评测任务列表页
 - 新增 `/results/[jobId]` 任务详情页
 - 评测完成后自动跳转到结果页
@@ -783,21 +819,64 @@ await prisma.project.create({
 - ✅ 评测任务与结果正确关联
 
 ### 新增文件
-| 文件 | 说明 |
-|------|------|
+
+| 文件                               | 说明           |
+| ---------------------------------- | -------------- |
 | `src/app/results/[jobId]/page.tsx` | 评测任务详情页 |
 
 ### 修改文件
-| 文件 | 变更 |
-|------|------|
-| `src/lib/eval-executor.ts` | maxTokens 增加、prompt 优化、传递 evalJobId |
-| `src/lib/clickhouse/client.ts` | ScoreData 添加 eval_job_id |
-| `src/server/routers/results.ts` | 新增 listByJobId、getJobSummary |
-| `src/server/routers/evalJobs.ts` | 传递 evalJobId 到评测执行器 |
-| `src/app/results/page.tsx` | 重构为任务列表页 |
-| `src/app/evaluation-center/page.tsx` | 评测完成后自动跳转 |
+
+| 文件                                 | 变更                                        |
+| ------------------------------------ | ------------------------------------------- |
+| `src/lib/eval-executor.ts`           | maxTokens 增加、prompt 优化、传递 evalJobId |
+| `src/lib/clickhouse/client.ts`       | ScoreData 添加 eval_job_id                  |
+| `src/server/routers/results.ts`      | 新增 listByJobId、getJobSummary             |
+| `src/server/routers/evalJobs.ts`     | 传递 evalJobId 到评测执行器                 |
+| `src/app/results/page.tsx`           | 重构为任务列表页                            |
+| `src/app/evaluation-center/page.tsx` | 评测完成后自动跳转                          |
 
 ---
+
+## Phase 11: 部署 & 修复 (2026-01-26)
+
+### Task 11.1: Zeabur 部署与数据库修复 ✅
+
+**问题**:
+
+1. **Prisma Adapter 初始化错误**: 部署后执行 seed 脚本报错 `PrismaPg must be initialized with an instance of Pool`。
+2. **默认项目缺失**: 由于 seed 失败，导致创建评测器时报错 `Key (projectId)=(default) is not present`。
+
+**修复**:
+
+- 修正 `prisma/seed.ts`，显式导入 `pg.Pool` 并传入 `PrismaPg` 构造函数。
+- 修复后在 Zeabur 成功执行 `npx tsx prisma/seed.ts`。
+
+### Task 11.2: 前端 Hydration 修复 ✅
+
+**问题**:
+用户反馈页面加载崩溃，报错 `Hydration failed`，原因是浏览器插件（如 1Password）向 `body` 注入了 `data-atm-ext-installed` 属性，导致 SSR 校验失败。
+
+**修复**:
+
+- `src/app/layout.tsx`: 向 `<body>` 标签添加 `suppressHydrationWarning` 属性。
+
+### Task 11.3: Langfuse 兼容性增强 ✅
+
+**需求**:
+用户希望使用 Dify 的 Native Langfuse Integration 连接 SimpleFuse，而不是 Webhook。
+
+**实现**:
+
+1. **后端**:
+   - 新增 `POST /api/public/ingestion`: 模拟 Langfuse 接收接口 (Support `trace-create`, `generation-create`)
+   - 新增 `GET /api/public/health`: 响应 Dify 连接验证
+2. **前端**:
+   - `src/app/settings/dify/page.tsx`: 增加 "Langfuse 兼容模式配置" 区域，显示 Host/PK/SK。
+
+### 版本发布
+
+- 代码已同步至 GitHub (Tag: `feat: add Langfuse compatibility and fix seed script`)
+- Zeabur 自动触发重新部署
 
 ## Phase 10.1: 仪表盘数据修复 ✅
 
@@ -816,10 +895,10 @@ await prisma.project.create({
 
 ### 根本原因
 
-| 错误字段 | 正确字段 |
-|---------|---------|
+| 错误字段     | 正确字段       |
+| ------------ | -------------- |
 | `total_cost` | `total_tokens` |
-| `latency` | `latency_ms` |
+| `latency`    | `latency_ms`   |
 
 ### 解决方案
 
@@ -829,9 +908,9 @@ await prisma.project.create({
 4. 仪表盘添加 30 秒自动刷新
 
 ### 修改文件
-| 文件 | 变更 |
-|------|------|
-| `src/server/routers/statistics.ts` | 修复字段名 total_cost→total_tokens, latency→latency_ms |
-| `src/app/dashboard/page.tsx` | 添加 refetchInterval: 30000 |
-| `src/app/evaluation-center/page.tsx` | 添加 utils.statistics.invalidate() |
 
+| 文件                                 | 变更                                                   |
+| ------------------------------------ | ------------------------------------------------------ |
+| `src/server/routers/statistics.ts`   | 修复字段名 total_cost→total_tokens, latency→latency_ms |
+| `src/app/dashboard/page.tsx`         | 添加 refetchInterval: 30000                            |
+| `src/app/evaluation-center/page.tsx` | 添加 utils.statistics.invalidate()                     |
