@@ -338,7 +338,7 @@ export default function EvaluationCenterPage() {
                       {selectedEvaluators.length === evaluators.length ? '取消全选' : '全选'}
                     </Button>
                   </div>
-                  {evaluators.map(evaluator => (
+                  {evaluators.map((evaluator: any) => (
                     <div
                       key={evaluator.id}
                       className="flex items-center gap-2 p-2 rounded hover:bg-muted/50 cursor-pointer"
@@ -375,7 +375,7 @@ export default function EvaluationCenterPage() {
                     <SelectValue placeholder="选择 LLM" />
                   </SelectTrigger>
                   <SelectContent>
-                    {llmConfigs.map(config => (
+                    {llmConfigs.map((config: any) => (
                       <SelectItem key={config.id} value={config.id}>
                         {config.name}
                         {config.isDefault && ' (默认)'}
