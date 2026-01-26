@@ -148,7 +148,7 @@ export default function DatasetsPage() {
   // 这里由于数据量不大，我们做客户端过滤
   // 实际生产中如果数据量大应该在服务端做搜索
   const datasets = data?.datasets || []
-  const filteredDatasets = datasets.filter(d => 
+  const filteredDatasets = datasets.filter((d: Dataset) => 
     d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     (d.description || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
