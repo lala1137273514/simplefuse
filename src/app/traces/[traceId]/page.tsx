@@ -1,6 +1,6 @@
 'use client'
 
-import { use } from 'react'
+import { use, useState } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -18,6 +18,8 @@ import {
   Play,
   Square,
   Database,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { trpc } from '@/lib/trpc-client'
@@ -111,12 +113,26 @@ function formatJson(input: string | null | undefined) {
   }
 }
 
+function formatAnyValue(value: unknown): string {
+  if (value === null || value === undefined) return '-'
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value)
+      return JSON.stringify(parsed, null, 2)
+    } catch {
+      return value
+    }
+  }
+  return JSON.stringify(value, null, 2)
+}
+
 interface PageProps {
   params: Promise<{ traceId: string }>
 }
 
 export default function TraceDetailPage({ params }: PageProps) {
   const { traceId } = use(params)
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set())
   
   const { data: trace, isLoading, error } = trpc.traces.getById.useQuery(
     { id: traceId },
@@ -128,6 +144,18 @@ export default function TraceDetailPage({ params }: PageProps) {
 
   const handleCopyId = () => {
     navigator.clipboard.writeText(traceId)
+  }
+
+  const toggleNode = (nodeId: string) => {
+    setExpandedNodes(prev => {
+      const next = new Set(prev)
+      if (next.has(nodeId)) {
+        next.delete(nodeId)
+      } else {
+        next.add(nodeId)
+      }
+      return next
+    })
   }
 
   if (isLoading) {
@@ -161,9 +189,18 @@ export default function TraceDetailPage({ params }: PageProps) {
     )
   }
 
-  // 解析 observations
-  const observations = (trace.observations as unknown as Observation[] | null) || []
+  // 解析 observations 并按时间排序
+  const rawObservations = (trace.observations as unknown as Observation[] | null) || []
+  const observations = [...rawObservations].sort((a, b) => {
+    const timeA = a.startTime ? new Date(a.startTime).getTime() : 0
+    const timeB = b.startTime ? new Date(b.startTime).getTime() : 0
+    return timeA - timeB
+  })
   const metadata = trace.metadata as Record<string, string> | null
+
+  // 优先显示 workflowName，其次是 name
+  const displayName = trace.workflowName || trace.name || 'Trace'
+  const subName = trace.workflowName && trace.name ? trace.name : '工作流执行'
 
   return (
     <div className="space-y-6">
@@ -171,7 +208,7 @@ export default function TraceDetailPage({ params }: PageProps) {
       <Breadcrumb 
         items={[
           { label: 'Traces', href: '/traces' },
-          { label: trace.name || traceId }
+          { label: displayName }
         ]}
         backHref="/traces"
       />
@@ -180,11 +217,11 @@ export default function TraceDetailPage({ params }: PageProps) {
       <div className="flex items-start justify-between">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-3">
-            {trace.name || 'Trace'}
+            {displayName}
             {getStatusBadge(trace.status)}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {trace.workflowName || '工作流执行'}
+            {subName}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleCopyId}>
@@ -252,44 +289,80 @@ export default function TraceDetailPage({ params }: PageProps) {
             <CardContent>
               {observations.length > 0 ? (
                 <div className="space-y-1">
-                  {observations.map((obs, index) => (
-                    <div 
-                      key={obs.id || index} 
-                      className="flex items-center justify-between py-3 px-4 rounded-lg hover:bg-muted/50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
-                          {getObsIcon(obs.type)}
-                        </div>
-                        <div>
+                  {observations.map((obs, index) => {
+                    const nodeId = obs.id || `node-${index}`
+                    const isExpanded = expandedNodes.has(nodeId)
+                    const hasContent = obs.input || obs.output
+                    
+                    return (
+                      <div key={nodeId} className="border rounded-lg overflow-hidden">
+                        {/* 节点头部 - 可点击展开 */}
+                        <div 
+                          className={`flex items-center justify-between py-3 px-4 hover:bg-muted/50 transition-colors ${hasContent ? 'cursor-pointer' : ''}`}
+                          onClick={() => hasContent && toggleNode(nodeId)}
+                        >
+                          <div className="flex items-center gap-3">
+                            {hasContent && (
+                              isExpanded 
+                                ? <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                : <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                            )}
+                            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
+                              {getObsIcon(obs.type)}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium">{obs.name}</span>
+                                {obs.model && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    {obs.model}
+                                  </Badge>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
+                                {obs.tokens?.total && (
+                                  <span>{formatTokens(obs.tokens.total)} tokens</span>
+                                )}
+                                {obs.latencyMs && (
+                                  <span>{formatLatency(obs.latencyMs)}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                           <div className="flex items-center gap-2">
-                            <span className="font-medium">{obs.name}</span>
-                            {obs.model && (
-                              <Badge variant="secondary" className="text-xs">
-                                {obs.model}
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
-                            {obs.tokens?.total && (
-                              <span>{formatTokens(obs.tokens.total)} tokens</span>
-                            )}
                             {obs.latencyMs && (
-                              <span>{formatLatency(obs.latencyMs)}</span>
+                              <span className="text-sm text-muted-foreground">
+                                {formatLatency(obs.latencyMs)}
+                              </span>
                             )}
+                            {getStatusBadge(obs.status)}
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {obs.latencyMs && (
-                          <span className="text-sm text-muted-foreground">
-                            {formatLatency(obs.latencyMs)}
-                          </span>
+                        
+                        {/* 展开的输入输出内容 */}
+                        {isExpanded && hasContent && (
+                          <div className="border-t bg-muted/30 p-4 space-y-4">
+                            {obs.input && (
+                              <div>
+                                <h4 className="text-sm font-medium text-muted-foreground mb-2">输入</h4>
+                                <pre className="bg-background rounded-lg p-3 text-sm overflow-auto max-h-64 whitespace-pre-wrap font-mono">
+                                  {formatAnyValue(obs.input)}
+                                </pre>
+                              </div>
+                            )}
+                            {obs.output && (
+                              <div>
+                                <h4 className="text-sm font-medium text-muted-foreground mb-2">输出</h4>
+                                <pre className="bg-background rounded-lg p-3 text-sm overflow-auto max-h-64 whitespace-pre-wrap font-mono">
+                                  {formatAnyValue(obs.output)}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
                         )}
-                        {getStatusBadge(obs.status)}
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               ) : (
                 <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -389,3 +462,4 @@ export default function TraceDetailPage({ params }: PageProps) {
     </div>
   )
 }
+
