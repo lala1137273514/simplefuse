@@ -13,9 +13,33 @@ import {
   Copy,
   Loader2,
   AlertCircle,
+  Bot,
+  GitBranch,
+  Play,
+  Square,
+  Database,
 } from 'lucide-react'
 import { Breadcrumb } from '@/components/ui/breadcrumb'
 import { trpc } from '@/lib/trpc-client'
+
+// Observation 类型定义
+interface Observation {
+  id: string
+  type: string
+  name: string
+  model?: string
+  startTime?: string
+  endTime?: string
+  latencyMs?: number
+  tokens?: {
+    prompt?: number
+    completion?: number
+    total?: number
+  }
+  input?: unknown
+  output?: unknown
+  status: string
+}
 
 function getStatusBadge(status: string) {
   switch (status) {
@@ -40,6 +64,20 @@ function getStatusBadge(status: string) {
   }
 }
 
+function getObsIcon(type: string) {
+  switch (type) {
+    case 'llm':
+    case 'generation':
+      return <Bot className="h-4 w-4 text-purple-500" />
+    case 'span':
+      return <GitBranch className="h-4 w-4 text-blue-500" />
+    case 'retrieval':
+      return <Database className="h-4 w-4 text-green-500" />
+    default:
+      return <Play className="h-4 w-4 text-gray-500" />
+  }
+}
+
 function formatTime(timestamp: string) {
   try {
     return new Date(timestamp).toLocaleString('zh-CN')
@@ -51,7 +89,16 @@ function formatTime(timestamp: string) {
 function formatLatency(ms: number | null | undefined) {
   if (!ms) return '-'
   if (ms < 1000) return `${ms}ms`
-  return `${(ms / 1000).toFixed(2)}s`
+  if (ms < 60000) return `${(ms / 1000).toFixed(2)}s`
+  const minutes = Math.floor(ms / 60000)
+  const seconds = ((ms % 60000) / 1000).toFixed(0)
+  return `${minutes}m ${seconds}s`
+}
+
+function formatTokens(tokens: number | null | undefined) {
+  if (!tokens) return '-'
+  if (tokens >= 1000) return `${(tokens / 1000).toFixed(1)}K`
+  return tokens.toString()
 }
 
 function formatJson(input: string | null | undefined) {
@@ -71,7 +118,6 @@ interface PageProps {
 export default function TraceDetailPage({ params }: PageProps) {
   const { traceId } = use(params)
   
-  // 使用 tRPC 获取真实数据
   const { data: trace, isLoading, error } = trpc.traces.getById.useQuery(
     { id: traceId },
     { 
@@ -84,7 +130,6 @@ export default function TraceDetailPage({ params }: PageProps) {
     navigator.clipboard.writeText(traceId)
   }
 
-  // Loading 状态
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -93,7 +138,6 @@ export default function TraceDetailPage({ params }: PageProps) {
     )
   }
 
-  // 错误状态
   if (error || !trace) {
     return (
       <div className="space-y-6">
@@ -117,7 +161,8 @@ export default function TraceDetailPage({ params }: PageProps) {
     )
   }
 
-  // 解析 metadata
+  // 解析 observations
+  const observations = (trace.observations as unknown as Observation[] | null) || []
   const metadata = trace.metadata as Record<string, string> | null
 
   return (
@@ -139,7 +184,7 @@ export default function TraceDetailPage({ params }: PageProps) {
             {getStatusBadge(trace.status)}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {trace.workflowName || '未知工作流'}
+            {trace.workflowName || '工作流执行'}
           </p>
         </div>
         <Button variant="outline" size="sm" onClick={handleCopyId}>
@@ -168,7 +213,7 @@ export default function TraceDetailPage({ params }: PageProps) {
               总 Tokens
             </div>
             <p className="text-lg font-medium mt-1">
-              {trace.totalTokens?.toLocaleString() || '-'}
+              {formatTokens(trace.totalTokens)}
             </p>
           </CardContent>
         </Card>
@@ -182,21 +227,81 @@ export default function TraceDetailPage({ params }: PageProps) {
         </Card>
         <Card className="glass">
           <CardContent className="pt-4">
-            <div className="text-muted-foreground text-sm">状态</div>
+            <div className="text-muted-foreground text-sm">节点数</div>
             <p className="text-lg font-medium mt-1">
-              {trace.status}
+              {observations.length || '-'}
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* 详情 Tabs */}
-      <Tabs defaultValue="io" className="space-y-4">
+      <Tabs defaultValue="timeline" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="timeline">时间线</TabsTrigger>
           <TabsTrigger value="io">输入/输出</TabsTrigger>
           <TabsTrigger value="metadata">元数据</TabsTrigger>
         </TabsList>
 
+        {/* 时间线 Tab */}
+        <TabsContent value="timeline">
+          <Card className="glass">
+            <CardHeader>
+              <CardTitle className="text-lg">执行时间线</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {observations.length > 0 ? (
+                <div className="space-y-1">
+                  {observations.map((obs, index) => (
+                    <div 
+                      key={obs.id || index} 
+                      className="flex items-center justify-between py-3 px-4 rounded-lg hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
+                          {getObsIcon(obs.type)}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{obs.name}</span>
+                            {obs.model && (
+                              <Badge variant="secondary" className="text-xs">
+                                {obs.model}
+                              </Badge>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground mt-0.5">
+                            {obs.tokens?.total && (
+                              <span>{formatTokens(obs.tokens.total)} tokens</span>
+                            )}
+                            {obs.latencyMs && (
+                              <span>{formatLatency(obs.latencyMs)}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {obs.latencyMs && (
+                          <span className="text-sm text-muted-foreground">
+                            {formatLatency(obs.latencyMs)}
+                          </span>
+                        )}
+                        {getStatusBadge(obs.status)}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                  <Square className="h-8 w-8 mb-2" />
+                  <p>暂无执行节点数据</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* 输入/输出 Tab */}
         <TabsContent value="io">
           <div className="grid grid-cols-2 gap-4">
             <Card className="glass">
@@ -222,6 +327,7 @@ export default function TraceDetailPage({ params }: PageProps) {
           </div>
         </TabsContent>
 
+        {/* 元数据 Tab */}
         <TabsContent value="metadata">
           <Card className="glass">
             <CardHeader>
@@ -267,16 +373,10 @@ export default function TraceDetailPage({ params }: PageProps) {
                       <span className="font-mono">{trace.userId}</span>
                     </div>
                   )}
-                  {trace.sessionId && (
-                    <div>
-                      <span className="text-muted-foreground">Session ID: </span>
-                      <span className="font-mono">{trace.sessionId}</span>
-                    </div>
-                  )}
                 </div>
                 {trace.tags && trace.tags.length > 0 && (
                   <div className="flex gap-2 flex-wrap mt-2">
-                    {trace.tags.map((tag, i) => (
+                    {trace.tags.map((tag: string, i: number) => (
                       <Badge key={i} variant="secondary">{tag}</Badge>
                     ))}
                   </div>

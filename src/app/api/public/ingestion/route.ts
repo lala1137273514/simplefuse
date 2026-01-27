@@ -254,6 +254,27 @@ export async function POST(request: Request) {
           if (obs.latencyMs) totalLatency += obs.latencyMs
         }
         
+        // 从 observations 提取输入输出
+        // 输入：取第一个有输入的节点
+        // 输出：取最后一个有输出的节点（通常是 LLM 节点）
+        let extractedInput: string | undefined
+        let extractedOutput: string | undefined
+        
+        for (const obs of observationsData) {
+          if (!extractedInput && obs.input) {
+            extractedInput = typeof obs.input === 'string' ? obs.input : JSON.stringify(obs.input)
+          }
+        }
+        
+        // 反向遍历找最后一个有输出的节点
+        for (let i = observationsData.length - 1; i >= 0; i--) {
+          const obs = observationsData[i]
+          if (obs.output) {
+            extractedOutput = typeof obs.output === 'string' ? obs.output : JSON.stringify(obs.output)
+            break
+          }
+        }
+        
         // 获取 trace 主体数据
         const traceBody = traceEvent?.body || {}
         const timestamp = traceEvent?.timestamp || observations[0]?.timestamp || new Date().toISOString()
@@ -297,7 +318,8 @@ export async function POST(request: Request) {
               observations: mergedObs as unknown as Prisma.JsonArray,
               totalTokens: updatedTotalTokens || existingTrace.totalTokens,
               latencyMs: updatedTotalLatency || existingTrace.latencyMs,
-              output: traceBody.output ? JSON.stringify(traceBody.output) : existingTrace.output,
+              input: extractedInput || existingTrace.input,
+              output: extractedOutput || existingTrace.output,
               updatedAt: new Date(),
             },
           })
@@ -311,8 +333,8 @@ export async function POST(request: Request) {
               projectId: auth.projectId,
               name: traceBody.name || 'Trace',
               timestamp: new Date(timestamp),
-              input: traceBody.input ? JSON.stringify(traceBody.input) : undefined,
-              output: traceBody.output ? JSON.stringify(traceBody.output) : undefined,
+              input: extractedInput || (traceBody.input ? JSON.stringify(traceBody.input) : undefined),
+              output: extractedOutput || (traceBody.output ? JSON.stringify(traceBody.output) : undefined),
               metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
               tags: ['langfuse'],
               totalTokens: totalTokens || undefined,
