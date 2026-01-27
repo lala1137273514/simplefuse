@@ -292,7 +292,7 @@ export default function TraceDetailPage({ params }: PageProps) {
                   {observations.map((obs, index) => {
                     const nodeId = obs.id || `node-${index}`
                     const isExpanded = expandedNodes.has(nodeId)
-                    const hasContent = obs.input || obs.output
+                    const hasContent = Boolean(obs.input || obs.output)
                     
                     return (
                       <div key={nodeId} className="border rounded-lg overflow-hidden">
