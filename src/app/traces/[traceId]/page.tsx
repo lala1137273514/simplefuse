@@ -342,7 +342,7 @@ export default function TraceDetailPage({ params }: PageProps) {
                         {/* 展开的输入输出内容 */}
                         {isExpanded && hasContent && (
                           <div className="border-t bg-muted/30 p-4 space-y-4">
-                            {obs.input && (
+                            {Boolean(obs.input) && (
                               <div>
                                 <h4 className="text-sm font-medium text-muted-foreground mb-2">输入</h4>
                                 <pre className="bg-background rounded-lg p-3 text-sm overflow-auto max-h-64 whitespace-pre-wrap font-mono">
@@ -350,7 +350,7 @@ export default function TraceDetailPage({ params }: PageProps) {
                                 </pre>
                               </div>
                             )}
-                            {obs.output && (
+                            {Boolean(obs.output) && (
                               <div>
                                 <h4 className="text-sm font-medium text-muted-foreground mb-2">输出</h4>
                                 <pre className="bg-background rounded-lg p-3 text-sm overflow-auto max-h-64 whitespace-pre-wrap font-mono">
