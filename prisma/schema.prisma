@@ -53,7 +53,9 @@ model Trace {
   totalTokens      Int?
   latencyMs        Int?
   status           String   @default("success")
+  observations     Json? // 存储 spans/generations 数组
   createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   scores  Score[]

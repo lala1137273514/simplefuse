@@ -35,6 +35,7 @@ export interface TraceRecord {
   total_tokens: number | null
   latency_ms: number | null
   status: string
+  observations: unknown[] | null
   created_at: string
 }
 
@@ -58,6 +59,7 @@ function toTraceRecord(trace: {
   totalTokens: number | null
   latencyMs: number | null
   status: string
+  observations?: Prisma.JsonValue | null
   createdAt: Date
 }): TraceRecord {
   return {
@@ -76,6 +78,7 @@ function toTraceRecord(trace: {
     total_tokens: trace.totalTokens,
     latency_ms: trace.latencyMs,
     status: trace.status,
+    observations: (trace.observations as unknown[]) || null,
     created_at: trace.createdAt.toISOString(),
   }
 }

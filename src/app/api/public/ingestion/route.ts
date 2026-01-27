@@ -3,28 +3,40 @@
  * POST /api/public/ingestion
  * 
  * 接收 Langfuse 格式的数据（Dify 通过 Langfuse 集成发送）
+ * 将多个事件（trace-create + generation-create + span-create）合并为单个 Trace
  */
 
 import { NextResponse } from 'next/server'
-import { insertTraces, type TraceData } from '@/lib/clickhouse'
 import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
-// Langfuse Event Types
+// ============================================
+// 类型定义
+// ============================================
+
+interface LangfuseUsage {
+  totalTokens?: number
+  promptTokens?: number
+  completionTokens?: number
+  input?: number
+  output?: number
+  total?: number
+}
+
 interface LangfuseBody {
+  id?: string
+  traceId?: string
   name?: string
   model?: string
   input?: unknown
   output?: unknown
   metadata?: Record<string, unknown>
-  usage?: {
-    totalTokens?: number
-    promptTokens?: number
-    completionTokens?: number
-  }
+  usage?: LangfuseUsage
   startTime?: string
   endTime?: string
   level?: string
   statusMessage?: string
+  parentObservationId?: string
 }
 
 interface LangfuseEvent {
@@ -33,6 +45,28 @@ interface LangfuseEvent {
   timestamp: string
   body?: LangfuseBody
 }
+
+interface Observation {
+  id: string
+  type: string  // llm | span | generation | retrieval
+  name: string
+  model?: string
+  startTime?: string
+  endTime?: string
+  latencyMs?: number
+  tokens?: {
+    prompt?: number
+    completion?: number
+    total?: number
+  }
+  input?: unknown
+  output?: unknown
+  status: string
+}
+
+// ============================================
+// 辅助函数
+// ============================================
 
 /**
  * 验证 Basic Auth 并获取 Project
@@ -52,22 +86,15 @@ async function validateAuth(request: Request) {
       return null
     }
 
-    // 从数据库查找匹配的项目
-    // 约定：publicKey 格式为 "pk-{projectId}" 或直接是 projectId
-    // secretKey 格式为 "sk-{...}"
-    
-    // 尝试从 publicKey 中提取 projectId
+    // 从数据库查找项目
     let projectId: string | null = null
     
     if (publicKey.startsWith('pk-')) {
-      // 新格式：pk-simplefuse 表示使用默认项目
-      // 从数据库查找第一个项目
       const project = await prisma.project.findFirst({
         orderBy: { createdAt: 'asc' },
       })
       projectId = project?.id || null
     } else {
-      // 尝试直接作为 projectId 使用
       const project = await prisma.project.findUnique({
         where: { id: publicKey },
       })
@@ -75,17 +102,15 @@ async function validateAuth(request: Request) {
     }
 
     if (!projectId) {
-      // 如果仍然没找到，创建或使用默认项目
       const defaultProject = await prisma.project.findFirst()
-      if (defaultProject) {
-        projectId = defaultProject.id
-      } else {
-        console.warn('[Ingestion] No project found, cannot proceed')
-        return null
-      }
+      projectId = defaultProject?.id || null
     }
 
-    console.log(`[Ingestion] Auth validated, projectId: ${projectId}`)
+    if (!projectId) {
+      console.warn('[Ingestion] No project found')
+      return null
+    }
+
     return { projectId, publicKey }
   } catch (error) {
     console.error('[Ingestion] Auth validation error:', error)
@@ -107,6 +132,57 @@ function calculateLatencyMs(startTime?: string, endTime?: string): number | unde
   }
 }
 
+/**
+ * 提取 tokens 信息
+ */
+function extractTokens(usage?: LangfuseUsage): { prompt?: number; completion?: number; total?: number } | undefined {
+  if (!usage) return undefined
+  
+  const prompt = usage.promptTokens || usage.input || 0
+  const completion = usage.completionTokens || usage.output || 0
+  const total = usage.totalTokens || usage.total || (prompt + completion)
+  
+  if (total === 0) return undefined
+  
+  return { prompt, completion, total }
+}
+
+/**
+ * 将 Langfuse 事件转换为 Observation
+ */
+function eventToObservation(event: LangfuseEvent): Observation | null {
+  const body = event.body || {}
+  
+  // 确定观察类型
+  let type = 'span'
+  if (event.type === 'generation-create' || event.type === 'generation-update') {
+    type = body.model ? 'llm' : 'generation'
+  } else if (event.type === 'span-create' || event.type === 'span-update') {
+    type = 'span'
+  }
+  
+  const tokens = extractTokens(body.usage)
+  const latencyMs = calculateLatencyMs(body.startTime, body.endTime)
+  
+  return {
+    id: event.id,
+    type,
+    name: body.name || body.model || event.type,
+    model: body.model,
+    startTime: body.startTime,
+    endTime: body.endTime,
+    latencyMs,
+    tokens,
+    input: body.input,
+    output: body.output,
+    status: body.level === 'ERROR' ? 'error' : 'success',
+  }
+}
+
+// ============================================
+// 主处理函数
+// ============================================
+
 export async function POST(request: Request) {
   try {
     // 1. Auth
@@ -116,8 +192,8 @@ export async function POST(request: Request) {
     }
 
     // 2. Parse Body
-    const body = await request.json()
-    const { batch } = body
+    const rawBody = await request.json()
+    const { batch } = rawBody
 
     if (!batch || !Array.isArray(batch)) {
       return NextResponse.json({ error: 'Invalid batch format' }, { status: 400 })
@@ -126,61 +202,131 @@ export async function POST(request: Request) {
     console.log(`[Ingestion] Received ${batch.length} events for project ${auth.projectId}`)
 
     const successes: { id: string; status: number }[] = []
-    const tracesToInsert: TraceData[] = []
+    
+    // 3. 按 traceId 分组事件
+    const traceEvents = new Map<string, {
+      traceEvent: LangfuseEvent | null
+      observations: LangfuseEvent[]
+    }>()
 
-    // 3. Process Events
     for (const event of batch as LangfuseEvent[]) {
-      try {
-        // 处理 trace-create 和 generation-create 事件
-        if (event.type === 'trace-create' || event.type === 'generation-create') {
-          const eventBody = event.body || {}
-          
-          // 计算总 tokens
-          let totalTokens: number | undefined
-          if (eventBody.usage) {
-            totalTokens = eventBody.usage.totalTokens || 
-              ((eventBody.usage.promptTokens || 0) + (eventBody.usage.completionTokens || 0)) || 
-              undefined
-          }
-          
-          // 构建 metadata
-          const metadata: Record<string, string> = {}
-          if (eventBody.metadata) {
-            for (const [key, value] of Object.entries(eventBody.metadata)) {
-              metadata[key] = typeof value === 'string' ? value : JSON.stringify(value)
-            }
-          }
-          if (eventBody.model) metadata.model = eventBody.model
-          if (eventBody.level) metadata.level = eventBody.level
-          if (eventBody.statusMessage) metadata.statusMessage = eventBody.statusMessage
-
-          const traceData: TraceData = {
-            id: event.id,
-            projectId: auth.projectId,
-            name: eventBody.name || eventBody.model || event.type,
-            timestamp: event.timestamp || new Date().toISOString(),
-            input: eventBody.input ? JSON.stringify(eventBody.input) : undefined,
-            output: eventBody.output ? JSON.stringify(eventBody.output) : undefined,
-            metadata,
-            tags: [event.type],
-            totalTokens,
-            latencyMs: calculateLatencyMs(eventBody.startTime, eventBody.endTime),
-            status: 'success',
-          }
-          tracesToInsert.push(traceData)
-        }
-
-        successes.push({ id: event.id, status: 201 })
-      } catch (e) {
-        console.error('[Ingestion] Error processing event:', e)
-        successes.push({ id: event.id, status: 500 })
+      const body = event.body || {}
+      
+      // 确定 traceId
+      let traceId: string
+      if (event.type === 'trace-create' || event.type === 'trace-update') {
+        traceId = event.id
+      } else {
+        traceId = body.traceId || event.id
       }
+      
+      // 初始化分组
+      if (!traceEvents.has(traceId)) {
+        traceEvents.set(traceId, { traceEvent: null, observations: [] })
+      }
+      
+      const group = traceEvents.get(traceId)!
+      
+      if (event.type === 'trace-create' || event.type === 'trace-update') {
+        group.traceEvent = event
+      } else if (event.type.includes('generation') || event.type.includes('span')) {
+        group.observations.push(event)
+      }
+      
+      successes.push({ id: event.id, status: 201 })
     }
 
-    // 4. Batch Insert
-    if (tracesToInsert.length > 0) {
-      await insertTraces(tracesToInsert)
-      console.log(`[Ingestion] Inserted ${tracesToInsert.length} traces`)
+    // 4. 处理每个 trace 分组
+    for (const [traceId, group] of traceEvents) {
+      try {
+        const { traceEvent, observations } = group
+        
+        // 构建 observations 数组
+        const observationsData: Observation[] = observations
+          .map(eventToObservation)
+          .filter((o): o is Observation => o !== null)
+        
+        // 计算聚合数据
+        let totalTokens = 0
+        let totalLatency = 0
+        for (const obs of observationsData) {
+          if (obs.tokens?.total) totalTokens += obs.tokens.total
+          if (obs.latencyMs) totalLatency += obs.latencyMs
+        }
+        
+        // 获取 trace 主体数据
+        const traceBody = traceEvent?.body || {}
+        const timestamp = traceEvent?.timestamp || observations[0]?.timestamp || new Date().toISOString()
+        
+        // 构建 metadata
+        const metadata: Record<string, string> = {}
+        if (traceBody.metadata) {
+          for (const [key, value] of Object.entries(traceBody.metadata)) {
+            metadata[key] = typeof value === 'string' ? value : JSON.stringify(value)
+          }
+        }
+        
+        // Upsert trace (创建或更新)
+        const existingTrace = await prisma.trace.findUnique({
+          where: { id: traceId },
+        })
+        
+        if (existingTrace) {
+          // 更新现有 trace，合并 observations
+          const existingObs = (existingTrace.observations as Observation[]) || []
+          const mergedObs = [...existingObs]
+          
+          // 合并新的 observations（避免重复）
+          for (const newObs of observationsData) {
+            if (!mergedObs.find(o => o.id === newObs.id)) {
+              mergedObs.push(newObs)
+            }
+          }
+          
+          // 重新计算总 tokens 和延迟
+          let updatedTotalTokens = 0
+          let updatedTotalLatency = 0
+          for (const obs of mergedObs) {
+            if (obs.tokens?.total) updatedTotalTokens += obs.tokens.total
+            if (obs.latencyMs) updatedTotalLatency += obs.latencyMs
+          }
+          
+          await prisma.trace.update({
+            where: { id: traceId },
+            data: {
+              observations: mergedObs as unknown as Prisma.JsonArray,
+              totalTokens: updatedTotalTokens || existingTrace.totalTokens,
+              latencyMs: updatedTotalLatency || existingTrace.latencyMs,
+              output: traceBody.output ? JSON.stringify(traceBody.output) : existingTrace.output,
+              updatedAt: new Date(),
+            },
+          })
+          
+          console.log(`[Ingestion] Updated trace ${traceId} with ${mergedObs.length} observations`)
+        } else {
+          // 创建新 trace
+          await prisma.trace.create({
+            data: {
+              id: traceId,
+              projectId: auth.projectId,
+              name: traceBody.name || 'Trace',
+              timestamp: new Date(timestamp),
+              input: traceBody.input ? JSON.stringify(traceBody.input) : undefined,
+              output: traceBody.output ? JSON.stringify(traceBody.output) : undefined,
+              metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+              tags: ['langfuse'],
+              totalTokens: totalTokens || undefined,
+              latencyMs: totalLatency || undefined,
+              status: 'success',
+              observations: observationsData.length > 0 ? (observationsData as unknown as Prisma.JsonArray) : undefined,
+            },
+          })
+          
+          console.log(`[Ingestion] Created trace ${traceId} with ${observationsData.length} observations`)
+        }
+      } catch (error) {
+        console.error(`[Ingestion] Error processing trace ${traceId}:`, error)
+      }
     }
 
     return NextResponse.json({ successes }, { status: 200 })

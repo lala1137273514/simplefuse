@@ -45,6 +45,7 @@ function transformTrace(record: TraceRecord) {
     totalTokens: record.total_tokens,
     latencyMs: record.latency_ms,
     status: record.status,
+    observations: record.observations,
     createdAt: record.created_at,
   }
 }
