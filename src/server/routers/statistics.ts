@@ -2,13 +2,12 @@
  * Statistics tRPC Router
  * Dashboard 统计与趋势 API
  * 
- * Task 5.1: 总量/平均分/Token/延迟统计
- * Task 5.2: 评分趋势/维度平均/延迟分布
+ * 使用 Prisma + PostgreSQL 实现
  */
 
 import { z } from 'zod'
 import { router, publicProcedure } from '../trpc'
-import { getClickHouseClient } from '@/lib/clickhouse'
+import prisma from '@/lib/prisma'
 
 // 通用输入验证
 const timeRangeInputSchema = z.object({
@@ -17,9 +16,9 @@ const timeRangeInputSchema = z.object({
 })
 
 /**
- * 将 timeRange 转换为 SQL 日期条件
+ * 将 timeRange 转换为日期对象
  */
-function getTimeRangeCondition(timeRange: string): string {
+function getTimeRangeDate(timeRange: string): Date {
   const days = {
     '1d': 1,
     '7d': 7,
@@ -27,7 +26,9 @@ function getTimeRangeCondition(timeRange: string): string {
     '90d': 90,
   }[timeRange] || 7
   
-  return `timestamp >= now() - INTERVAL ${days} DAY`
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return date
 }
 
 export const statisticsRouter = router({
@@ -37,51 +38,32 @@ export const statisticsRouter = router({
   overview: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            count() as total_traces,
-            sum(coalesce(total_tokens, 0)) as total_tokens,
-            avg(coalesce(latency_ms, 0)) as avg_latency_ms
-          FROM traces 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      // 查询 Traces 统计
+      const tracesStats = await prisma.trace.aggregate({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
+        _count: true,
+        _sum: { totalTokens: true },
+        _avg: { latencyMs: true },
       })
       
-      const rows = await result.json() as Array<{
-        total_traces: string
-        total_tokens: string
-        avg_latency_ms: string
-      }>
-      const data = rows[0] || { total_traces: '0', total_tokens: '0', avg_latency_ms: '0' }
-      
-      // 获取评测次数
-      const scoresResult = await client.query({
-        query: `
-          SELECT count() as total_evaluations
-          FROM scores 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      // 查询评测次数
+      const scoresCount = await prisma.score.count({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
       })
-      
-      const scoresData = (await scoresResult.json() as Array<{ total_evaluations: string }>)[0] || { total_evaluations: '0' }
       
       return {
-        totalTraces: parseInt(data.total_traces, 10),
-        totalEvaluations: parseInt(scoresData.total_evaluations, 10),
-        totalTokens: parseInt(data.total_tokens, 10),
-        avgLatencyMs: parseFloat(data.avg_latency_ms) || 0,
+        totalTraces: tracesStats._count,
+        totalEvaluations: scoresCount,
+        totalTokens: tracesStats._sum.totalTokens || 0,
+        avgLatencyMs: tracesStats._avg.latencyMs || 0,
       }
     }),
 
@@ -91,73 +73,59 @@ export const statisticsRouter = router({
   scoreStats: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            avg(score) as avg_score,
-            min(score) as min_score,
-            max(score) as max_score
-          FROM scores 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      const stats = await prisma.score.aggregate({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
+        _avg: { score: true },
+        _min: { score: true },
+        _max: { score: true },
       })
       
-      const rows = await result.json() as Array<{
-        avg_score: string
-        min_score: string
-        max_score: string
-      }>
-      const data = rows[0] || { avg_score: '0', min_score: '0', max_score: '0' }
-      
       return {
-        avgScore: parseFloat(data.avg_score) || 0,
-        minScore: parseFloat(data.min_score) || 0,
-        maxScore: parseFloat(data.max_score) || 0,
+        avgScore: stats._avg.score || 0,
+        minScore: stats._min.score || 0,
+        maxScore: stats._max.score || 0,
       }
     }),
 
   /**
    * 延迟分位数统计 (Task 5.1)
+   * 注意：PostgreSQL 没有原生分位数函数，使用近似计算
    */
   latencyPercentiles: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            quantile(0.5)(coalesce(latency_ms, 0)) as p50,
-            quantile(0.9)(coalesce(latency_ms, 0)) as p90,
-            quantile(0.99)(coalesce(latency_ms, 0)) as p99
-          FROM traces 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      // 查询所有延迟数据并排序
+      const traces = await prisma.trace.findMany({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+          latencyMs: { not: null },
+        },
+        select: { latencyMs: true },
+        orderBy: { latencyMs: 'asc' },
       })
       
-      const rows = await result.json() as Array<{
-        p50: string
-        p90: string
-        p99: string
-      }>
-      const data = rows[0] || { p50: '0', p90: '0', p99: '0' }
+      if (traces.length === 0) {
+        return { p50: 0, p90: 0, p99: 0 }
+      }
+      
+      const latencies = traces.map(t => t.latencyMs!).filter(l => l !== null)
+      const getPercentile = (arr: number[], p: number) => {
+        const index = Math.floor(arr.length * p)
+        return arr[Math.min(index, arr.length - 1)]
+      }
       
       return {
-        p50: parseInt(data.p50, 10),
-        p90: parseInt(data.p90, 10),
-        p99: parseInt(data.p99, 10),
+        p50: getPercentile(latencies, 0.5),
+        p90: getPercentile(latencies, 0.9),
+        p99: getPercentile(latencies, 0.99),
       }
     }),
 
@@ -167,34 +135,30 @@ export const statisticsRouter = router({
   scoreTrend: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            toDate(timestamp) as date,
-            avg(score) as avg_score
-          FROM scores 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-          GROUP BY date
-          ORDER BY date ASC
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      // 使用 Prisma raw query 进行日期分组
+      const scores = await prisma.score.findMany({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
+        select: { timestamp: true, score: true },
+        orderBy: { timestamp: 'asc' },
       })
       
-      const rows = await result.json() as Array<{
-        date: string
-        avg_score: string
-      }>
+      // 按日期分组计算平均分
+      const dateMap = new Map<string, { sum: number; count: number }>()
+      for (const s of scores) {
+        const dateKey = s.timestamp.toISOString().split('T')[0]
+        const current = dateMap.get(dateKey) || { sum: 0, count: 0 }
+        dateMap.set(dateKey, { sum: current.sum + s.score, count: current.count + 1 })
+      }
       
       return {
-        data: rows.map(row => ({
-          date: row.date,
-          avgScore: parseFloat(row.avg_score) || 0,
+        data: Array.from(dateMap.entries()).map(([date, { sum, count }]) => ({
+          date,
+          avgScore: sum / count,
         })),
       }
     }),
@@ -205,34 +169,22 @@ export const statisticsRouter = router({
   dimensionScores: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            evaluator_name,
-            avg(score) as avg_score
-          FROM scores 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-          GROUP BY evaluator_name
-          ORDER BY avg_score DESC
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      const scores = await prisma.score.groupBy({
+        by: ['evaluatorName'],
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
+        _avg: { score: true },
+        orderBy: { _avg: { score: 'desc' } },
       })
       
-      const rows = await result.json() as Array<{
-        evaluator_name: string
-        avg_score: string
-      }>
-      
       return {
-        dimensions: rows.map(row => ({
-          name: row.evaluator_name,
-          avgScore: parseFloat(row.avg_score) || 0,
+        dimensions: scores.map(row => ({
+          name: row.evaluatorName,
+          avgScore: row._avg.score || 0,
         })),
       }
     }),
@@ -243,226 +195,150 @@ export const statisticsRouter = router({
   latencyDistribution: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
-      const result = await client.query({
-        query: `
-          SELECT 
-            multiIf(
-              coalesce(latency_ms, 0) < 100, '0-100',
-              coalesce(latency_ms, 0) < 500, '100-500',
-              coalesce(latency_ms, 0) < 1000, '500-1000',
-              '1000+'
-            ) as bucket,
-            count() as count
-          FROM traces 
-          WHERE project_id = {projectId:String} 
-            AND ${timeCondition}
-            AND is_deleted = 0
-          GROUP BY bucket
-          ORDER BY bucket ASC
-        `,
-        query_params: { projectId: input.projectId },
-        format: 'JSONEachRow',
+      const traces = await prisma.trace.findMany({
+        where: {
+          projectId: input.projectId,
+          timestamp: { gte: startDate },
+        },
+        select: { latencyMs: true },
       })
       
-      const rows = await result.json() as Array<{
-        bucket: string
-        count: string
-      }>
+      // 手动分桶
+      const buckets = {
+        '0-100': 0,
+        '100-500': 0,
+        '500-1000': 0,
+        '1000+': 0,
+      }
+      
+      for (const t of traces) {
+        const latency = t.latencyMs || 0
+        if (latency < 100) buckets['0-100']++
+        else if (latency < 500) buckets['100-500']++
+        else if (latency < 1000) buckets['500-1000']++
+        else buckets['1000+']++
+      }
       
       return {
-        buckets: rows.map(row => ({
-          range: row.bucket,
-          count: parseInt(row.count, 10),
-        })),
+        buckets: Object.entries(buckets).map(([range, count]) => ({ range, count })),
       }
     }),
 
   /**
    * 合并仪表盘数据 (Task 9.2 - 性能优化)
-   * 一次性获取所有 Dashboard 需要的数据，减少网络请求
    */
   dashboardOverview: publicProcedure
     .input(timeRangeInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
       // 并行执行所有查询
-      const [tracesResult, scoresResult, percentileResult, trendResult, dimensionResult, distributionResult] = await Promise.all([
-        // 1. Traces 统计
-        client.query({
-          query: `
-            SELECT 
-              count() as total_traces,
-              sum(coalesce(total_tokens, 0)) as total_tokens,
-              avg(coalesce(latency_ms, 0)) as avg_latency_ms
-            FROM traces 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
+      const [tracesStats, scoresStats, allTraces, allScores] = await Promise.all([
+        // Traces 统计
+        prisma.trace.aggregate({
+          where: {
+            projectId: input.projectId,
+            timestamp: { gte: startDate },
+          },
+          _count: true,
+          _sum: { totalTokens: true },
+          _avg: { latencyMs: true },
         }),
-        
-        // 2. 评分统计
-        client.query({
-          query: `
-            SELECT 
-              count() as total_evaluations,
-              avg(score) as avg_score,
-              min(score) as min_score,
-              max(score) as max_score
-            FROM scores 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
+        // Scores 统计
+        prisma.score.aggregate({
+          where: {
+            projectId: input.projectId,
+            timestamp: { gte: startDate },
+          },
+          _count: true,
+          _avg: { score: true },
+          _min: { score: true },
+          _max: { score: true },
         }),
-        
-        // 3. 延迟分位数
-        client.query({
-          query: `
-            SELECT 
-              quantile(0.5)(coalesce(latency_ms, 0)) as p50,
-              quantile(0.9)(coalesce(latency_ms, 0)) as p90,
-              quantile(0.99)(coalesce(latency_ms, 0)) as p99
-            FROM traces 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
+        // 延迟数据（用于计算分位数和分布）
+        prisma.trace.findMany({
+          where: {
+            projectId: input.projectId,
+            timestamp: { gte: startDate },
+          },
+          select: { latencyMs: true },
+          orderBy: { latencyMs: 'asc' },
         }),
-        
-        // 4. 评分趋势
-        client.query({
-          query: `
-            SELECT 
-              toDate(timestamp) as date,
-              avg(score) as avg_score
-            FROM scores 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-            GROUP BY date
-            ORDER BY date ASC
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
-        }),
-        
-        // 5. 维度评分
-        client.query({
-          query: `
-            SELECT 
-              evaluator_name,
-              avg(score) as avg_score
-            FROM scores 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-            GROUP BY evaluator_name
-            ORDER BY avg_score DESC
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
-        }),
-        
-        // 6. 延迟分布
-        client.query({
-          query: `
-            SELECT 
-              multiIf(
-                coalesce(latency_ms, 0) < 100, '0-100',
-                coalesce(latency_ms, 0) < 500, '100-500',
-                coalesce(latency_ms, 0) < 1000, '500-1000',
-                '1000+'
-              ) as bucket,
-              count() as count
-            FROM traces 
-            WHERE project_id = {projectId:String} 
-              AND ${timeCondition}
-              AND is_deleted = 0
-            GROUP BY bucket
-            ORDER BY bucket ASC
-          `,
-          query_params: { projectId: input.projectId },
-          format: 'JSONEachRow',
+        // 评分数据（用于趋势和维度）
+        prisma.score.findMany({
+          where: {
+            projectId: input.projectId,
+            timestamp: { gte: startDate },
+          },
+          select: { timestamp: true, score: true, evaluatorName: true },
         }),
       ])
       
-      // 解析结果
-      const tracesData = (await tracesResult.json() as Array<{
-        total_traces: string
-        total_tokens: string
-        avg_latency_ms: string
-      }>)[0] || { total_traces: '0', total_tokens: '0', avg_latency_ms: '0' }
+      // 计算延迟分位数
+      const latencies = allTraces.map(t => t.latencyMs).filter((l): l is number => l !== null)
+      latencies.sort((a, b) => a - b)
+      const getPercentile = (arr: number[], p: number) => {
+        if (arr.length === 0) return 0
+        const index = Math.floor(arr.length * p)
+        return arr[Math.min(index, arr.length - 1)]
+      }
       
-      const scoresData = (await scoresResult.json() as Array<{
-        total_evaluations: string
-        avg_score: string
-        min_score: string
-        max_score: string
-      }>)[0] || { total_evaluations: '0', avg_score: '0', min_score: '0', max_score: '0' }
+      // 计算延迟分布
+      const buckets = { '0-100': 0, '100-500': 0, '500-1000': 0, '1000+': 0 }
+      for (const latency of latencies) {
+        if (latency < 100) buckets['0-100']++
+        else if (latency < 500) buckets['100-500']++
+        else if (latency < 1000) buckets['500-1000']++
+        else buckets['1000+']++
+      }
       
-      const percentileData = (await percentileResult.json() as Array<{
-        p50: string
-        p90: string
-        p99: string
-      }>)[0] || { p50: '0', p90: '0', p99: '0' }
+      // 计算评分趋势
+      const dateMap = new Map<string, { sum: number; count: number }>()
+      for (const s of allScores) {
+        const dateKey = s.timestamp.toISOString().split('T')[0]
+        const current = dateMap.get(dateKey) || { sum: 0, count: 0 }
+        dateMap.set(dateKey, { sum: current.sum + s.score, count: current.count + 1 })
+      }
       
-      const trendRows = await trendResult.json() as Array<{ date: string; avg_score: string }>
-      const dimensionRows = await dimensionResult.json() as Array<{ evaluator_name: string; avg_score: string }>
-      const distributionRows = await distributionResult.json() as Array<{ bucket: string; count: string }>
+      // 计算维度评分
+      const dimensionMap = new Map<string, { sum: number; count: number }>()
+      for (const s of allScores) {
+        const current = dimensionMap.get(s.evaluatorName) || { sum: 0, count: 0 }
+        dimensionMap.set(s.evaluatorName, { sum: current.sum + s.score, count: current.count + 1 })
+      }
       
-      const totalTraces = parseInt(tracesData.total_traces, 10)
-      const totalEvaluations = parseInt(scoresData.total_evaluations, 10)
+      const totalTraces = tracesStats._count
+      const totalEvaluations = scoresStats._count
       
       return {
-        // 基础统计
         overview: {
           totalTraces,
           totalEvaluations,
-          totalTokens: parseInt(tracesData.total_tokens, 10),
-          avgLatencyMs: parseFloat(tracesData.avg_latency_ms) || 0,
+          totalTokens: tracesStats._sum.totalTokens || 0,
+          avgLatencyMs: tracesStats._avg.latencyMs || 0,
         },
-        // 评分统计 (当没有评测时隐藏)
         scoreStats: totalEvaluations > 0 ? {
-          avgScore: parseFloat(scoresData.avg_score) || 0,
-          minScore: parseFloat(scoresData.min_score) || 0,
-          maxScore: parseFloat(scoresData.max_score) || 0,
+          avgScore: scoresStats._avg.score || 0,
+          minScore: scoresStats._min.score || 0,
+          maxScore: scoresStats._max.score || 0,
         } : null,
-        // 延迟分位数
         latencyPercentiles: {
-          p50: parseInt(percentileData.p50, 10),
-          p90: parseInt(percentileData.p90, 10),
-          p99: parseInt(percentileData.p99, 10),
+          p50: getPercentile(latencies, 0.5),
+          p90: getPercentile(latencies, 0.9),
+          p99: getPercentile(latencies, 0.99),
         },
-        // 评分趋势 (当没有评测时隐藏)
-        scoreTrend: totalEvaluations > 0 ? trendRows.map(row => ({
-          date: row.date,
-          avgScore: parseFloat(row.avg_score) || 0,
+        scoreTrend: totalEvaluations > 0 ? Array.from(dateMap.entries()).map(([date, { sum, count }]) => ({
+          date,
+          avgScore: sum / count,
         })) : null,
-        // 维度评分 (当没有评测时隐藏)
-        dimensionScores: totalEvaluations > 0 ? dimensionRows.map(row => ({
-          name: row.evaluator_name,
-          avgScore: parseFloat(row.avg_score) || 0,
-        })) : null,
-        // 延迟分布
-        latencyDistribution: distributionRows.map(row => ({
-          range: row.bucket,
-          count: parseInt(row.count, 10),
-        })),
+        dimensionScores: totalEvaluations > 0 ? Array.from(dimensionMap.entries())
+          .map(([name, { sum, count }]) => ({ name, avgScore: sum / count }))
+          .sort((a, b) => b.avgScore - a.avgScore) : null,
+        latencyDistribution: Object.entries(buckets).map(([range, count]) => ({ range, count })),
       }
     }),
 })
 
 export type StatisticsRouter = typeof statisticsRouter
-

@@ -1,9 +1,10 @@
 /**
- * ClickHouse 查询功能
- * 用于查询 Trace 数据
+ * 查询功能 - PostgreSQL 实现
+ * 替代原 ClickHouse 查询，使用 Prisma ORM
  */
 
-import { getClickHouseClient } from './client'
+import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 export interface TraceListParams {
   projectId: string
@@ -38,13 +39,54 @@ export interface TraceRecord {
 }
 
 /**
+ * 将 Prisma Trace 记录转换为 TraceRecord 格式
+ * 保持与原 ClickHouse 返回格式一致
+ */
+function toTraceRecord(trace: {
+  id: string
+  projectId: string
+  difyConnectionId: string | null
+  workflowName: string | null
+  name: string | null
+  timestamp: Date
+  userId: string | null
+  sessionId: string | null
+  input: string | null
+  output: string | null
+  metadata: Prisma.JsonValue
+  tags: string[]
+  totalTokens: number | null
+  latencyMs: number | null
+  status: string
+  createdAt: Date
+}): TraceRecord {
+  return {
+    id: trace.id,
+    project_id: trace.projectId,
+    dify_connection_id: trace.difyConnectionId || '',
+    workflow_name: trace.workflowName || '',
+    name: trace.name || '',
+    timestamp: trace.timestamp.toISOString(),
+    user_id: trace.userId,
+    session_id: trace.sessionId,
+    input: trace.input || '',
+    output: trace.output || '',
+    metadata: (trace.metadata as Record<string, string>) || {},
+    tags: trace.tags || [],
+    total_tokens: trace.totalTokens,
+    latency_ms: trace.latencyMs,
+    status: trace.status,
+    created_at: trace.createdAt.toISOString(),
+  }
+}
+
+/**
  * 查询 Trace 列表
  */
 export async function queryTraces(params: TraceListParams): Promise<{
   traces: TraceRecord[]
   total: number
 }> {
-  const ch = getClickHouseClient()
   const {
     projectId,
     limit = 20,
@@ -58,100 +100,77 @@ export async function queryTraces(params: TraceListParams): Promise<{
     traceIds,
   } = params
 
-  // 构建 WHERE 条件
-  const conditions: string[] = ['is_deleted = 0']
-  const values: Record<string, unknown> = {}
-
-  if (projectId) {
-    conditions.push('project_id = {projectId:String}')
-    values.projectId = projectId
+  // 构建 where 条件
+  const where: Prisma.TraceWhereInput = {
+    projectId,
   }
 
   if (status) {
-    conditions.push('status = {status:String}')
-    values.status = status
+    where.status = status
   }
 
   if (name) {
-    conditions.push('name LIKE {name:String}')
-    values.name = `%${name}%`
+    where.name = {
+      contains: name,
+      mode: 'insensitive',
+    }
   }
 
   if (traceIds && traceIds.length > 0) {
-    conditions.push(`id IN ({traceIds:Array(String)})`)
-    values.traceIds = traceIds
+    where.id = {
+      in: traceIds,
+    }
   }
 
   if (startTime) {
-    conditions.push('timestamp >= {startTime:DateTime64(3)}')
-    values.startTime = startTime
+    where.timestamp = {
+      ...((where.timestamp as Prisma.DateTimeFilter) || {}),
+      gte: new Date(startTime),
+    }
   }
 
   if (endTime) {
-    conditions.push('timestamp <= {endTime:DateTime64(3)}')
-    values.endTime = endTime
+    where.timestamp = {
+      ...((where.timestamp as Prisma.DateTimeFilter) || {}),
+      lte: new Date(endTime),
+    }
   }
 
-  const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : ''
-  const orderClause = `ORDER BY ${orderBy} ${orderDir.toUpperCase()}`
+  // 映射排序字段
+  const orderByField = {
+    timestamp: 'timestamp',
+    latency_ms: 'latencyMs',
+    total_tokens: 'totalTokens',
+  }[orderBy] as 'timestamp' | 'latencyMs' | 'totalTokens'
 
   // 查询数据
-  const query = `
-    SELECT *
-    FROM traces
-    ${whereClause}
-    ${orderClause}
-    LIMIT {limit:UInt32}
-    OFFSET {offset:UInt32}
-  `
+  const [traces, total] = await Promise.all([
+    prisma.trace.findMany({
+      where,
+      orderBy: { [orderByField]: orderDir },
+      take: limit,
+      skip: offset,
+    }),
+    prisma.trace.count({ where }),
+  ])
 
-  const result = await ch.query({
-    query,
-    query_params: { ...values, limit, offset },
-    format: 'JSONEachRow',
-  })
-
-  const traces = await result.json<any>()
-
-  // 查询总数
-  const countQuery = `
-    SELECT count() as total
-    FROM traces
-    ${whereClause}
-  `
-
-  const countResult = await ch.query({
-    query: countQuery,
-    query_params: values,
-    format: 'JSONEachRow',
-  })
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const countData = await countResult.json<any>()
-  const total = parseInt(countData[0]?.total || '0', 10)
-
-  return { traces: traces as TraceRecord[], total }
+  return {
+    traces: traces.map(toTraceRecord),
+    total,
+  }
 }
 
 /**
  * 根据 ID 查询单个 Trace
  */
 export async function queryTraceById(id: string): Promise<TraceRecord | null> {
-  const ch = getClickHouseClient()
-
-  const query = `
-    SELECT *
-    FROM traces
-    WHERE id = {id:String} AND is_deleted = 0
-    LIMIT 1
-  `
-
-  const result = await ch.query({
-    query,
-    query_params: { id },
-    format: 'JSONEachRow',
+  const trace = await prisma.trace.findUnique({
+    where: { id },
   })
 
-  const traces = await result.json<any>()
-  return (traces[0] as TraceRecord) || null
+  if (!trace) {
+    return null
+  }
+
+  return toTraceRecord(trace)
 }

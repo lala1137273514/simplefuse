@@ -29,6 +29,62 @@ model Project {
   datasets           Dataset[]
   evalConfigs        EvalConfig[]
   evalJobs           EvalJob[]
+  traces             Trace[]
+  scores             Score[]
+}
+
+// ============================================
+// Trace 跟踪记录 (从 ClickHouse 迁移)
+// ============================================
+
+model Trace {
+  id               String   @id
+  projectId        String
+  difyConnectionId String?
+  workflowName     String?
+  name             String?
+  timestamp        DateTime
+  userId           String?
+  sessionId        String?
+  input            String?  @db.Text
+  output           String?  @db.Text
+  metadata         Json?
+  tags             String[]
+  totalTokens      Int?
+  latencyMs        Int?
+  status           String   @default("success")
+  createdAt        DateTime @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scores  Score[]
+
+  @@index([projectId, timestamp])
+  @@index([difyConnectionId])
+  @@index([workflowName])
+}
+
+// ============================================
+// Score 评测分数 (从 ClickHouse 迁移)
+// ============================================
+
+model Score {
+  id            String   @id
+  traceId       String
+  projectId     String
+  evaluatorId   String
+  evaluatorName String
+  score         Float
+  reasoning     String?  @db.Text
+  evalJobId     String?
+  timestamp     DateTime
+  createdAt     DateTime @default(now())
+
+  trace   Trace   @relation(fields: [traceId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, evaluatorName, timestamp])
+  @@index([traceId])
+  @@index([evalJobId])
 }
 
 // ============================================

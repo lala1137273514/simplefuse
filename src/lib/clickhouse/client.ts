@@ -1,177 +1,9 @@
 /**
- * ClickHouse 客户端
- * 用于连接和操作 ClickHouse 分析数据库
+ * 数据访问层 - PostgreSQL 实现
+ * 替代原 ClickHouse 实现，使用 Prisma ORM
  */
 
-import { createClient, ClickHouseClient } from '@clickhouse/client'
-
-// 单例模式
-let client: ClickHouseClient | null = null
-
-export function getClickHouseClient(): ClickHouseClient {
-  if (!client) {
-    client = createClient({
-      url: process.env.CLICKHOUSE_URL || 'http://localhost:8123',
-      database: process.env.CLICKHOUSE_DATABASE || 'simplefuse',
-      username: process.env.CLICKHOUSE_USER || 'default',
-      password: process.env.CLICKHOUSE_PASSWORD || '',
-    })
-  }
-  return client
-}
-
-/**
- * 将 ISO 时间戳转换为 ClickHouse DateTime64 格式
- */
-function toClickHouseDateTime(isoString: string): string {
-  // ClickHouse DateTime64 格式: '2024-01-24 12:00:00.000'
-  const date = new Date(isoString)
-  return date.toISOString().replace('T', ' ').replace('Z', '')
-}
-
-/**
- * 插入 Trace 数据到 ClickHouse
- */
-export async function insertTrace(trace: TraceData): Promise<void> {
-  const ch = getClickHouseClient()
-  const now = toClickHouseDateTime(new Date().toISOString())
-  const timestamp = toClickHouseDateTime(trace.timestamp)
-  
-  await ch.insert({
-    table: 'traces',
-    values: [{
-      id: trace.id,
-      project_id: trace.projectId,
-      dify_connection_id: trace.difyConnectionId || '',
-      workflow_name: trace.workflowName || '',
-      name: trace.name || '',
-      timestamp: timestamp,
-      user_id: trace.userId || null,
-      session_id: trace.sessionId || null,
-      input: trace.input || '',
-      output: trace.output || '',
-      metadata: trace.metadata || {},
-      tags: trace.tags || [],
-      total_tokens: trace.totalTokens || null,
-      latency_ms: trace.latencyMs || null,
-      status: trace.status || 'success',
-      created_at: now,
-      event_ts: now,
-      is_deleted: 0,
-    }],
-    format: 'JSONEachRow',
-  })
-}
-
-/**
- * 批量插入 Traces
- */
-export async function insertTraces(traces: TraceData[]): Promise<void> {
-  const ch = getClickHouseClient()
-  const now = toClickHouseDateTime(new Date().toISOString())
-  
-  const values = traces.map(trace => ({
-    id: trace.id,
-    project_id: trace.projectId,
-    dify_connection_id: trace.difyConnectionId || '',
-    workflow_name: trace.workflowName || '',
-    name: trace.name || '',
-    timestamp: toClickHouseDateTime(trace.timestamp),
-    user_id: trace.userId || null,
-    session_id: trace.sessionId || null,
-    input: trace.input || '',
-    output: trace.output || '',
-    metadata: trace.metadata || {},
-    tags: trace.tags || [],
-    total_tokens: trace.totalTokens || null,
-    latency_ms: trace.latencyMs || null,
-    status: trace.status || 'success',
-    created_at: now,
-    event_ts: now,
-    is_deleted: 0,
-  }))
-  
-  await ch.insert({
-    table: 'traces',
-    values,
-    format: 'JSONEachRow',
-  })
-}
-
-/**
- * 评测分数数据类型
- */
-export interface ScoreData {
-  id: string
-  project_id: string
-  trace_id: string
-  evaluator_id: string
-  evaluator_name: string
-  score: number
-  reason: string
-  eval_job_id?: string  // 关联的评测任务 ID
-  created_at: string
-}
-
-/**
- * 插入单条评测分数
- */
-export async function insertScore(score: ScoreData): Promise<void> {
-  const ch = getClickHouseClient()
-  const now = toClickHouseDateTime(score.created_at)
-  
-  await ch.insert({
-    table: 'scores',
-    values: [{
-      id: score.id,
-      project_id: score.project_id,
-      trace_id: score.trace_id,
-      evaluator_id: score.evaluator_id,
-      evaluator_name: score.evaluator_name,
-      score: score.score,
-      reasoning: score.reason,  // 字段名与表定义保持一致
-      eval_job_id: score.eval_job_id || null,  // 关联评测任务
-      timestamp: now,
-      created_at: now,
-      event_ts: now,
-      is_deleted: 0,
-    }],
-    format: 'JSONEachRow',
-  })
-}
-
-/**
- * 批量插入评测分数
- */
-export async function insertScores(scores: ScoreData[]): Promise<void> {
-  if (scores.length === 0) return
-  
-  const ch = getClickHouseClient()
-  
-  const values = scores.map(score => {
-    const now = toClickHouseDateTime(score.created_at)
-    return {
-      id: score.id,
-      project_id: score.project_id,
-      trace_id: score.trace_id,
-      evaluator_id: score.evaluator_id,
-      evaluator_name: score.evaluator_name,
-      score: score.score,
-      reasoning: score.reason,  // 字段名与表定义保持一致
-      eval_job_id: score.eval_job_id || null,  // 关联评测任务
-      timestamp: now,
-      created_at: now,
-      event_ts: now,
-      is_deleted: 0,
-    }
-  })
-  
-  await ch.insert({
-    table: 'scores',
-    values,
-    format: 'JSONEachRow',
-  })
-}
+import prisma from '@/lib/prisma'
 
 /**
  * Trace 数据类型
@@ -192,4 +24,122 @@ export interface TraceData {
   totalTokens?: number
   latencyMs?: number
   status?: string
+}
+
+/**
+ * 评测分数数据类型
+ */
+export interface ScoreData {
+  id: string
+  project_id: string
+  trace_id: string
+  evaluator_id: string
+  evaluator_name: string
+  score: number
+  reason: string
+  eval_job_id?: string
+  created_at: string
+}
+
+/**
+ * 插入 Trace 数据到 PostgreSQL
+ */
+export async function insertTrace(trace: TraceData): Promise<void> {
+  await prisma.trace.create({
+    data: {
+      id: trace.id,
+      projectId: trace.projectId,
+      difyConnectionId: trace.difyConnectionId || null,
+      workflowName: trace.workflowName || null,
+      name: trace.name || null,
+      timestamp: new Date(trace.timestamp),
+      userId: trace.userId || null,
+      sessionId: trace.sessionId || null,
+      input: trace.input || null,
+      output: trace.output || null,
+      metadata: trace.metadata ?? undefined,
+      tags: trace.tags || [],
+      totalTokens: trace.totalTokens || null,
+      latencyMs: trace.latencyMs || null,
+      status: trace.status || 'success',
+    },
+  })
+}
+
+/**
+ * 批量插入 Traces
+ */
+export async function insertTraces(traces: TraceData[]): Promise<void> {
+  if (traces.length === 0) return
+
+  await prisma.trace.createMany({
+    data: traces.map(trace => ({
+      id: trace.id,
+      projectId: trace.projectId,
+      difyConnectionId: trace.difyConnectionId || null,
+      workflowName: trace.workflowName || null,
+      name: trace.name || null,
+      timestamp: new Date(trace.timestamp),
+      userId: trace.userId || null,
+      sessionId: trace.sessionId || null,
+      input: trace.input || null,
+      output: trace.output || null,
+      metadata: trace.metadata ?? undefined,
+      tags: trace.tags || [],
+      totalTokens: trace.totalTokens || null,
+      latencyMs: trace.latencyMs || null,
+      status: trace.status || 'success',
+    })),
+    skipDuplicates: true,
+  })
+}
+
+/**
+ * 插入单条评测分数
+ */
+export async function insertScore(score: ScoreData): Promise<void> {
+  await prisma.score.create({
+    data: {
+      id: score.id,
+      traceId: score.trace_id,
+      projectId: score.project_id,
+      evaluatorId: score.evaluator_id,
+      evaluatorName: score.evaluator_name,
+      score: score.score,
+      reasoning: score.reason,
+      evalJobId: score.eval_job_id || null,
+      timestamp: new Date(score.created_at),
+    },
+  })
+}
+
+/**
+ * 批量插入评测分数
+ */
+export async function insertScores(scores: ScoreData[]): Promise<void> {
+  if (scores.length === 0) return
+
+  await prisma.score.createMany({
+    data: scores.map(score => ({
+      id: score.id,
+      traceId: score.trace_id,
+      projectId: score.project_id,
+      evaluatorId: score.evaluator_id,
+      evaluatorName: score.evaluator_name,
+      score: score.score,
+      reasoning: score.reason,
+      evalJobId: score.eval_job_id || null,
+      timestamp: new Date(score.created_at),
+    })),
+    skipDuplicates: true,
+  })
+}
+
+/**
+ * 保持向后兼容：导出一个空的 getClickHouseClient 函数
+ * 避免需要修改其他导入该函数的代码
+ */
+export function getClickHouseClient(): null {
+  console.warn('ClickHouse client is deprecated. Using PostgreSQL via Prisma.')
+  return null
 }

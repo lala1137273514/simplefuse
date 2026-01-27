@@ -2,13 +2,13 @@
  * 评测任务队列
  * 
  * 使用 BullMQ + Redis 实现异步评测任务
+ * 评测结果存储到 PostgreSQL（通过 Prisma）
  */
 
 import { Queue, Worker, Job } from 'bullmq'
 import IORedis from 'ioredis'
 import { createProviderFromDbConfig } from '@/lib/llm'
 import prisma from '@/lib/prisma'
-import { getClickHouseClient } from '@/lib/clickhouse'
 import { v4 as uuidv4 } from 'uuid'
 
 // Redis 连接
@@ -96,9 +96,9 @@ function parseEvaluationResult(content: string): EvaluationResult {
 }
 
 /**
- * 写入评测结果到 ClickHouse
+ * 写入评测结果到 PostgreSQL
  */
-async function writeScoreToClickHouse(data: {
+async function writeScoreToPostgres(data: {
   traceId: string
   projectId: string
   evaluatorId: string
@@ -107,29 +107,18 @@ async function writeScoreToClickHouse(data: {
   reasoning: string
   evalJobId: string
 }) {
-  const client = getClickHouseClient()
-  const now = new Date().toISOString().replace('T', ' ').slice(0, -1)
-  
-  await client.insert({
-    table: 'scores',
-    values: [{
+  await prisma.score.create({
+    data: {
       id: uuidv4(),
-      trace_id: data.traceId,
-      observation_id: null,
-      project_id: data.projectId,
-      evaluator_id: data.evaluatorId,
-      evaluator_name: data.evaluatorName,
+      traceId: data.traceId,
+      projectId: data.projectId,
+      evaluatorId: data.evaluatorId,
+      evaluatorName: data.evaluatorName,
       score: data.score,
       reasoning: data.reasoning,
-      source: 'llm',
-      data_type: 'numeric',
-      string_value: null,
-      eval_job_id: data.evalJobId,
-      timestamp: now,
-      event_ts: now,
-      is_deleted: 0,
-    }],
-    format: 'JSONEachRow',
+      evalJobId: data.evalJobId,
+      timestamp: new Date(),
+    },
   })
 }
 
@@ -177,9 +166,9 @@ async function processEvaluationTask(job: Job<EvaluationTaskData>): Promise<Eval
     // 5. 解析结果
     const result = parseEvaluationResult(response.content)
     
-    // 6. 写入 ClickHouse
+    // 6. 写入 PostgreSQL
     if (!result.error) {
-      await writeScoreToClickHouse({
+      await writeScoreToPostgres({
         traceId: data.traceId,
         projectId: data.projectId,
         evaluatorId: data.evaluatorId,

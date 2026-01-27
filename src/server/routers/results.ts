@@ -2,12 +2,13 @@
  * Results tRPC Router
  * 评测结果查询 API
  * 
- * Task 6.4: 评测结果页面
+ * 使用 Prisma + PostgreSQL 实现
  */
 
 import { z } from 'zod'
 import { router, publicProcedure } from '../trpc'
-import { getClickHouseClient } from '@/lib/clickhouse'
+import prisma from '@/lib/prisma'
+import { Prisma } from '@prisma/client'
 
 // 通用输入验证
 const baseInputSchema = z.object({
@@ -26,7 +27,7 @@ const listInputSchema = baseInputSchema.extend({
 })
 
 // 时间范围条件
-function getTimeRangeCondition(timeRange: string): string {
+function getTimeRangeDate(timeRange: string): Date {
   const days = {
     '1d': 1,
     '7d': 7,
@@ -34,7 +35,9 @@ function getTimeRangeCondition(timeRange: string): string {
     '90d': 90,
   }[timeRange] || 7
   
-  return `created_at >= now() - INTERVAL ${days} DAY`
+  const date = new Date()
+  date.setDate(date.getDate() - days)
+  return date
 }
 
 export const resultsRouter = router({
@@ -44,72 +47,42 @@ export const resultsRouter = router({
   list: publicProcedure
     .input(listInputSchema)
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
       
       // 构建筛选条件
-      const conditions = [
-        `project_id = {projectId:String}`,
-        timeCondition,
-        `is_deleted = 0`,
-      ]
+      const where: Prisma.ScoreWhereInput = {
+        projectId: input.projectId,
+        createdAt: { gte: startDate },
+      }
       
       if (input.evaluatorName) {
-        conditions.push(`evaluator_name = {evaluatorName:String}`)
+        where.evaluatorName = input.evaluatorName
       }
       if (input.traceId) {
-        conditions.push(`trace_id = {traceId:String}`)
+        where.traceId = input.traceId
       }
       if (input.minScore !== undefined) {
-        conditions.push(`score >= {minScore:Float64}`)
+        where.score = { ...((where.score as Prisma.FloatFilter) || {}), gte: input.minScore }
       }
       if (input.maxScore !== undefined) {
-        conditions.push(`score <= {maxScore:Float64}`)
+        where.score = { ...((where.score as Prisma.FloatFilter) || {}), lte: input.maxScore }
       }
 
-      const result = await client.query({
-        query: `
-          SELECT 
-            id,
-            trace_id,
-            evaluator_name,
-            score,
-            reasoning,
-            created_at
-          FROM scores 
-          WHERE ${conditions.join(' AND ')}
-          ORDER BY created_at DESC
-          LIMIT {limit:UInt32} OFFSET {offset:UInt32}
-        `,
-        query_params: {
-          projectId: input.projectId,
-          evaluatorName: input.evaluatorName || '',
-          traceId: input.traceId || '',
-          minScore: input.minScore || 0,
-          maxScore: input.maxScore || 10,
-          limit: input.limit,
-          offset: input.offset,
-        },
-        format: 'JSONEachRow',
+      const scores = await prisma.score.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: input.limit,
+        skip: input.offset,
       })
 
-      const rows = await result.json() as Array<{
-        id: string
-        trace_id: string
-        evaluator_name: string
-        score: string
-        reasoning: string
-        created_at: string
-      }>
-
       return {
-        results: rows.map(row => ({
+        results: scores.map(row => ({
           id: row.id,
-          traceId: row.trace_id,
-          evaluatorName: row.evaluator_name,
-          score: parseFloat(row.score),
-          reasoning: row.reasoning,
-          createdAt: row.created_at,
+          traceId: row.traceId,
+          evaluatorName: row.evaluatorName,
+          score: row.score,
+          reasoning: row.reasoning || '',
+          createdAt: row.createdAt.toISOString(),
         })),
       }
     }),
@@ -123,52 +96,27 @@ export const resultsRouter = router({
       traceId: z.string().min(1),
     }))
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-
-      const result = await client.query({
-        query: `
-          SELECT 
-            id,
-            trace_id,
-            evaluator_name,
-            score,
-            reasoning,
-            created_at
-          FROM scores 
-          WHERE project_id = {projectId:String}
-            AND trace_id = {traceId:String}
-            AND is_deleted = 0
-          ORDER BY evaluator_name ASC
-        `,
-        query_params: {
+      const scores = await prisma.score.findMany({
+        where: {
           projectId: input.projectId,
           traceId: input.traceId,
         },
-        format: 'JSONEachRow',
+        orderBy: { evaluatorName: 'asc' },
       })
 
-      const rows = await result.json() as Array<{
-        id: string
-        trace_id: string
-        evaluator_name: string
-        score: string
-        reasoning: string
-        created_at: string
-      }>
-
-      const scores = rows.map(row => parseFloat(row.score))
-      const avgScore = scores.length > 0 
-        ? scores.reduce((a, b) => a + b, 0) / scores.length 
+      const scoreValues = scores.map(row => row.score)
+      const avgScore = scoreValues.length > 0 
+        ? scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length 
         : 0
 
       return {
-        results: rows.map(row => ({
+        results: scores.map(row => ({
           id: row.id,
-          traceId: row.trace_id,
-          evaluatorName: row.evaluator_name,
-          score: parseFloat(row.score),
-          reasoning: row.reasoning,
-          createdAt: row.created_at,
+          traceId: row.traceId,
+          evaluatorName: row.evaluatorName,
+          score: row.score,
+          reasoning: row.reasoning || '',
+          createdAt: row.createdAt.toISOString(),
         })),
         avgScore,
       }
@@ -183,41 +131,26 @@ export const resultsRouter = router({
       timeRange: z.enum(['1d', '7d', '30d', '90d']).default('7d'),
     }))
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-      const timeCondition = getTimeRangeCondition(input.timeRange)
+      const startDate = getTimeRangeDate(input.timeRange)
 
-      const result = await client.query({
-        query: `
-          SELECT 
-            evaluator_name,
-            avg(score) as avg_score,
-            count() as count
-          FROM scores 
-          WHERE project_id = {projectId:String}
-            AND ${timeCondition}
-            AND is_deleted = 0
-          GROUP BY evaluator_name
-          ORDER BY evaluator_name ASC
-        `,
-        query_params: {
+      const grouped = await prisma.score.groupBy({
+        by: ['evaluatorName'],
+        where: {
           projectId: input.projectId,
+          createdAt: { gte: startDate },
         },
-        format: 'JSONEachRow',
+        _avg: { score: true },
+        _count: true,
+        orderBy: { evaluatorName: 'asc' },
       })
 
-      const rows = await result.json() as Array<{
-        evaluator_name: string
-        avg_score: string
-        count: string
-      }>
-
-      const totalCount = rows.reduce((sum, row) => sum + parseInt(row.count, 10), 0)
+      const totalCount = grouped.reduce((sum, row) => sum + row._count, 0)
 
       return {
-        dimensions: rows.map(row => ({
-          name: row.evaluator_name,
-          avgScore: parseFloat(row.avg_score),
-          count: parseInt(row.count, 10),
+        dimensions: grouped.map(row => ({
+          name: row.evaluatorName,
+          avgScore: row._avg.score || 0,
+          count: row._count,
         })),
         totalCount,
       }
@@ -232,40 +165,13 @@ export const resultsRouter = router({
       jobId: z.string().min(1),
     }))
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-
-      const result = await client.query({
-        query: `
-          SELECT 
-            id,
-            trace_id,
-            evaluator_id,
-            evaluator_name,
-            score,
-            reasoning,
-            created_at
-          FROM scores 
-          WHERE project_id = {projectId:String}
-            AND eval_job_id = {jobId:String}
-            AND is_deleted = 0
-          ORDER BY trace_id, evaluator_name ASC
-        `,
-        query_params: {
+      const scores = await prisma.score.findMany({
+        where: {
           projectId: input.projectId,
-          jobId: input.jobId,
+          evalJobId: input.jobId,
         },
-        format: 'JSONEachRow',
+        orderBy: [{ traceId: 'asc' }, { evaluatorName: 'asc' }],
       })
-
-      const rows = await result.json() as Array<{
-        id: string
-        trace_id: string
-        evaluator_id: string
-        evaluator_name: string
-        score: string
-        reasoning: string
-        created_at: string
-      }>
 
       // 按 trace_id 分组
       const traceMap = new Map<string, {
@@ -280,20 +186,20 @@ export const resultsRouter = router({
         }>
       }>()
 
-      for (const row of rows) {
-        if (!traceMap.has(row.trace_id)) {
-          traceMap.set(row.trace_id, {
-            traceId: row.trace_id,
+      for (const row of scores) {
+        if (!traceMap.has(row.traceId)) {
+          traceMap.set(row.traceId, {
+            traceId: row.traceId,
             scores: [],
           })
         }
-        traceMap.get(row.trace_id)!.scores.push({
+        traceMap.get(row.traceId)!.scores.push({
           id: row.id,
-          evaluatorId: row.evaluator_id,
-          evaluatorName: row.evaluator_name,
-          score: parseFloat(row.score),
-          reasoning: row.reasoning,
-          createdAt: row.created_at,
+          evaluatorId: row.evaluatorId,
+          evaluatorName: row.evaluatorName,
+          score: row.score,
+          reasoning: row.reasoning || '',
+          createdAt: row.createdAt.toISOString(),
         })
       }
 
@@ -311,45 +217,34 @@ export const resultsRouter = router({
       jobId: z.string().min(1),
     }))
     .query(async ({ input }) => {
-      const client = getClickHouseClient()
-
-      const result = await client.query({
-        query: `
-          SELECT 
-            evaluator_name,
-            avg(score) as avg_score,
-            count() as count,
-            countDistinct(trace_id) as trace_count
-          FROM scores 
-          WHERE project_id = {projectId:String}
-            AND eval_job_id = {jobId:String}
-            AND is_deleted = 0
-          GROUP BY evaluator_name
-          ORDER BY evaluator_name ASC
-        `,
-        query_params: {
+      const grouped = await prisma.score.groupBy({
+        by: ['evaluatorName'],
+        where: {
           projectId: input.projectId,
-          jobId: input.jobId,
+          evalJobId: input.jobId,
         },
-        format: 'JSONEachRow',
+        _avg: { score: true },
+        _count: true,
+        orderBy: { evaluatorName: 'asc' },
       })
 
-      const rows = await result.json() as Array<{
-        evaluator_name: string
-        avg_score: string
-        count: string
-        trace_count: string
-      }>
-
-      const totalTraces = rows.length > 0 ? parseInt(rows[0].trace_count, 10) : 0
+      // 获取不同 trace 数量
+      const distinctTraces = await prisma.score.findMany({
+        where: {
+          projectId: input.projectId,
+          evalJobId: input.jobId,
+        },
+        distinct: ['traceId'],
+        select: { traceId: true },
+      })
 
       return {
-        evaluators: rows.map(row => ({
-          name: row.evaluator_name,
-          avgScore: parseFloat(row.avg_score),
-          count: parseInt(row.count, 10),
+        evaluators: grouped.map(row => ({
+          name: row.evaluatorName,
+          avgScore: row._avg.score || 0,
+          count: row._count,
         })),
-        totalTraces,
+        totalTraces: distinctTraces.length,
       }
     }),
 })
