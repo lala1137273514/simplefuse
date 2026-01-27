@@ -273,7 +273,7 @@ export async function POST(request: Request) {
         
         if (existingTrace) {
           // 更新现有 trace，合并 observations
-          const existingObs = (existingTrace.observations as Observation[]) || []
+          const existingObs = (existingTrace.observations as unknown as Observation[] | null) || []
           const mergedObs = [...existingObs]
           
           // 合并新的 observations（避免重复）
