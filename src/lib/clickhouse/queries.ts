@@ -10,6 +10,7 @@ export interface TraceListParams {
   projectId: string
   limit?: number
   offset?: number
+  cursor?: string  // 游标分页：上一页最后一条记录的 ID
   status?: string
   name?: string
   startTime?: string
@@ -85,15 +86,18 @@ function toTraceRecord(trace: {
 
 /**
  * 查询 Trace 列表
+ * 支持游标分页（优先）和 offset 分页
  */
 export async function queryTraces(params: TraceListParams): Promise<{
   traces: TraceRecord[]
   total: number
+  nextCursor?: string  // 游标分页：下一页的游标
 }> {
   const {
     projectId,
     limit = 20,
     offset = 0,
+    cursor,
     status,
     name,
     startTime,
@@ -146,20 +150,36 @@ export async function queryTraces(params: TraceListParams): Promise<{
     total_tokens: 'totalTokens',
   }[orderBy] as 'timestamp' | 'latencyMs' | 'totalTokens'
 
-  // 查询数据
+  // 查询数据（多取一条用于判断是否有下一页）
   const [traces, total] = await Promise.all([
-    prisma.trace.findMany({
-      where,
-      orderBy: { [orderByField]: orderDir },
-      take: limit,
-      skip: offset,
-    }),
+    cursor
+      ? prisma.trace.findMany({
+          where,
+          orderBy: { [orderByField]: orderDir },
+          take: limit + 1,
+          cursor: { id: cursor },
+          skip: 1, // 跳过游标本身
+        })
+      : prisma.trace.findMany({
+          where,
+          orderBy: { [orderByField]: orderDir },
+          take: limit + 1,
+          skip: offset, // 回退到 offset 分页
+        }),
     prisma.trace.count({ where }),
   ])
 
+  // 判断是否有下一页
+  const hasNextPage = traces.length > limit
+  const resultTraces = hasNextPage ? traces.slice(0, limit) : traces
+  const nextCursor = hasNextPage && resultTraces.length > 0 
+    ? resultTraces[resultTraces.length - 1].id 
+    : undefined
+
   return {
-    traces: traces.map(toTraceRecord),
+    traces: resultTraces.map(toTraceRecord),
     total,
+    nextCursor,
   }
 }
 

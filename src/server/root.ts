@@ -7,6 +7,7 @@ import { statisticsRouter } from './routers/statistics'
 import { datasetsRouter } from './routers/datasets'
 import { difyConnectionsRouter } from './routers/difyConnections'
 import { resultsRouter } from './routers/results'
+import { datasetRunsRouter } from './routers/datasetRuns'
 
 export const appRouter = router({
   traces: tracesRouter,
@@ -17,6 +18,7 @@ export const appRouter = router({
   datasets: datasetsRouter,
   difyConnections: difyConnectionsRouter,
   results: resultsRouter,
+  datasetRuns: datasetRunsRouter,
 })
 
 export type AppRouter = typeof appRouter

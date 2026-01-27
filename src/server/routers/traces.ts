@@ -12,6 +12,7 @@ const listInputSchema = z.object({
   projectId: z.string().min(1),
   limit: z.number().min(1).max(100).optional().default(20),
   offset: z.number().min(0).optional().default(0),
+  cursor: z.string().optional(),  // 游标分页
   status: z.string().optional(),
   name: z.string().optional(),
   startTime: z.string().optional(),
@@ -53,14 +54,16 @@ function transformTrace(record: TraceRecord) {
 export const tracesRouter = router({
   /**
    * 获取 Trace 列表
+   * 支持游标分页（优先）和 offset 分页
    */
   list: publicProcedure
     .input(listInputSchema)
     .query(async ({ input }) => {
-      const { traces, total } = await queryTraces({
+      const { traces, total, nextCursor } = await queryTraces({
         projectId: input.projectId,
         limit: input.limit,
         offset: input.offset,
+        cursor: input.cursor,
         status: input.status,
         name: input.name,
         startTime: input.startTime,
@@ -74,6 +77,7 @@ export const tracesRouter = router({
         total,
         limit: input.limit,
         offset: input.offset,
+        nextCursor,  // 游标分页：下一页的游标
       }
     }),
 

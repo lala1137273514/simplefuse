@@ -31,6 +31,7 @@ model Project {
   evalJobs           EvalJob[]
   traces             Trace[]
   scores             Score[]
+  datasetRuns        DatasetRun[]
 }
 
 // ============================================
@@ -72,11 +73,16 @@ model Trace {
 model Score {
   id            String   @id
   traceId       String
+  observationId String? // 关联到具体 Observation
   projectId     String
   evaluatorId   String
   evaluatorName String
   score         Float
+  dataType      String   @default("NUMERIC") // NUMERIC | CATEGORICAL | BOOLEAN
+  stringValue   String? // 分类型评分的字符串值
   reasoning     String?  @db.Text
+  source        String   @default("EVAL") // API | EVAL | ANNOTATION
+  authorUserId  String? // 人工标注的用户
   evalJobId     String?
   timestamp     DateTime
   createdAt     DateTime @default(now())
@@ -87,6 +93,7 @@ model Score {
   @@index([projectId, evaluatorName, timestamp])
   @@index([traceId])
   @@index([evalJobId])
+  @@index([observationId])
 }
 
 // ============================================
@@ -175,8 +182,9 @@ model Dataset {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  project Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  items   DatasetItem[]
+  project     Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items       DatasetItem[]
+  datasetRuns DatasetRun[]
 
   @@index([projectId])
 }
@@ -191,10 +199,54 @@ model DatasetItem {
   metadata       Json?
   createdAt      DateTime @default(now())
 
-  dataset Dataset @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  dataset  Dataset          @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  runItems DatasetRunItem[]
 
   @@index([datasetId])
   @@index([traceId])
+}
+
+// ============================================
+// Dataset Run - 评测集运行记录
+// ============================================
+
+model DatasetRun {
+  id          String   @id @default(uuid())
+  datasetId   String
+  projectId   String
+  name        String?
+  description String?  @db.Text
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  dataset Dataset          @relation(fields: [datasetId], references: [id], onDelete: Cascade)
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  items   DatasetRunItem[]
+
+  @@index([datasetId])
+  @@index([projectId, createdAt])
+}
+
+model DatasetRunItem {
+  id             String   @id @default(uuid())
+  datasetRunId   String
+  datasetItemId  String
+  traceId        String?
+  observationId  String?
+  input          Json?
+  expectedOutput Json?
+  output         Json?
+  error          String?  @db.Text
+  latencyMs      Int?
+  totalTokens    Int?
+  totalCost      Decimal? @db.Decimal(10, 6)
+  createdAt      DateTime @default(now())
+
+  datasetRun  DatasetRun  @relation(fields: [datasetRunId], references: [id], onDelete: Cascade)
+  datasetItem DatasetItem @relation(fields: [datasetItemId], references: [id], onDelete: Cascade)
+
+  @@index([datasetRunId])
+  @@index([datasetItemId])
 }
 
 // ============================================

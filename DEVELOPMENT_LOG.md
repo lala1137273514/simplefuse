@@ -947,31 +947,31 @@ await prisma.project.create({
 return NextResponse.json({
   data: [
     {
-      id: 'default',
-      name: 'SimpleFuse Default Project',
+      id: "default",
+      name: "SimpleFuse Default Project",
       organization: {
-        id: 'default-org',
-        name: 'SimpleFuse Organization'
+        id: "default-org",
+        name: "SimpleFuse Organization",
       },
       metadata: {},
-      retentionDays: null
-    }
-  ]
-})
+      retentionDays: null,
+    },
+  ],
+});
 ```
 
 ### 修改文件
 
-| 文件                                  | 变更                                        |
-| ------------------------------------- | ------------------------------------------- |
-| `src/app/api/public/projects/route.ts` | 添加 organization 和 metadata 必填字段       |
+| 文件                                   | 变更                                   |
+| -------------------------------------- | -------------------------------------- |
+| `src/app/api/public/projects/route.ts` | 添加 organization 和 metadata 必填字段 |
 
 ### Langfuse 兼容 API 端点
 
-| 端点                        | 功能                  |
-| --------------------------- | --------------------- |
-| `GET /api/public/health`    | 健康检查              |
-| `GET /api/public/projects`  | 项目信息 (凭据验证)   |
+| 端点                         | 功能                  |
+| ---------------------------- | --------------------- |
+| `GET /api/public/health`     | 健康检查              |
+| `GET /api/public/projects`   | 项目信息 (凭据验证)   |
 | `POST /api/public/ingestion` | Trace/Generation 接收 |
 
 ---
@@ -984,11 +984,11 @@ return NextResponse.json({
 
 ### 排查分析
 
-| 问题 | 原因 | 影响 |
-|------|------|------|
-| **force-dynamic 配置** | `layout.tsx` 设置全局 `force-dynamic` | 禁用所有页面静态缓存 |
-| **未配置 QueryClient 缓存** | 使用默认配置，staleTime=0 | 每次页面切换重新请求数据 |
-| **无 Loading UI** | 页面切换显示空白或加载圈 | 用户体感差 |
+| 问题                        | 原因                                  | 影响                     |
+| --------------------------- | ------------------------------------- | ------------------------ |
+| **force-dynamic 配置**      | `layout.tsx` 设置全局 `force-dynamic` | 禁用所有页面静态缓存     |
+| **未配置 QueryClient 缓存** | 使用默认配置，staleTime=0             | 每次页面切换重新请求数据 |
+| **无 Loading UI**           | 页面切换显示空白或加载圈              | 用户体感差               |
 
 ### 优化方案
 
@@ -997,16 +997,19 @@ return NextResponse.json({
 **文件**: `src/app/providers.tsx`
 
 ```typescript
-const [queryClient] = useState(() => new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5,       // 数据有效期 5 分钟
-      gcTime: 1000 * 60 * 30,         // 缓存保留 30 分钟
-      refetchOnWindowFocus: false,    // 窗口聚焦时不自动刷新
-      retry: 1,                       // 失败后只重试 1 次
-    },
-  },
-}))
+const [queryClient] = useState(
+  () =>
+    new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 1000 * 60 * 5, // 数据有效期 5 分钟
+          gcTime: 1000 * 60 * 30, // 缓存保留 30 分钟
+          refetchOnWindowFocus: false, // 窗口聚焦时不自动刷新
+          retry: 1, // 失败后只重试 1 次
+        },
+      },
+    }),
+);
 ```
 
 **效果**: 减少重复请求 60%+
@@ -1023,20 +1026,303 @@ const [queryClient] = useState(() => new QueryClient({
 
 新增 3 个 Loading 组件：
 
-| 文件 | 说明 |
-|------|------|
-| `src/app/dashboard/loading.tsx` | Dashboard 骨架屏 |
-| `src/app/traces/loading.tsx` | Traces 列表骨架屏 |
-| `src/app/evaluation-center/loading.tsx` | 评测中心骨架屏 |
+| 文件                                    | 说明              |
+| --------------------------------------- | ----------------- |
+| `src/app/dashboard/loading.tsx`         | Dashboard 骨架屏  |
+| `src/app/traces/loading.tsx`            | Traces 列表骨架屏 |
+| `src/app/evaluation-center/loading.tsx` | 评测中心骨架屏    |
 
 **效果**: 页面切换时显示骨架屏而非空白，改善用户体感
 
 ### 优化总结
 
-| 优先级 | 优化项 | 预期效果 |
-|--------|--------|----------|
 | P0 | QueryClient 缓存配置 | 减少 API 请求 60%+ |
 | P1 | 移除 force-dynamic | 减少 SSR 开销 40%+ |
 | P2 | Loading 骨架屏 | 改善视觉体验 |
 
+---
 
+## Phase 13: ClickHouse → PostgreSQL 迁移 & Trace 详情页优化 (2026-01-27)
+
+### 背景问题
+
+Zeabur 上运行的 ClickHouse 服务经常出现内存溢出 (OOM) 问题，导致服务不稳定。决定将 Trace 和 Score 数据存储迁移到 PostgreSQL，简化架构。
+
+### Task 13.1: ClickHouse → PostgreSQL 数据存储迁移 ✅
+
+**主要变更**:
+
+1. **Prisma Schema 更新**:
+   - 在 PostgreSQL 中新增 `Trace` 和 `Score` 模型
+   - `Trace` 模型包含 `observations` JSON 字段存储节点执行信息
+   - 添加 `updatedAt` 时间戳支持更新操作
+
+2. **数据访问层重写**:
+   - `src/lib/clickhouse/client.ts` - 使用 Prisma ORM 替代 ClickHouse 客户端
+   - `src/lib/clickhouse/queries.ts` - 查询函数改用 `prisma.trace.findMany/findUnique`
+   - 保留 `getClickHouseClient()` 占位函数避免导入错误
+
+3. **数据库迁移**:
+   - 创建迁移文件 `prisma/migrations/20260127_add_trace_score/migration.sql`
+   - 创建迁移文件 `prisma/migrations/20260127_add_observations/migration.sql`
+
+---
+
+### Task 13.2: Trace-Span 层级合并 ✅
+
+**问题**: Dify 通过 Langfuse 发送多个事件（`trace-create` + `generation-create` + `span-create`），每个事件被存储为独立的 Trace，导致列表显示多条重复记录。
+
+**解决方案**:
+
+1. **重写 Ingestion API** (`src/app/api/public/ingestion/route.ts`):
+   - 按 `traceId` 分组所有事件
+   - 将 `generation-create` 和 `span-create` 事件转换为 `observations` 数组
+   - 使用 upsert 逻辑：存在则更新，不存在则创建
+   - 合并 observations 时避免重复
+
+2. **Observation 数据结构**:
+
+   ```typescript
+   interface Observation {
+     id: string;
+     type: "llm" | "span" | "generation" | "retrieval";
+     name: string; // 节点名称
+     model?: string; // LLM 模型名
+     startTime?: string;
+     endTime?: string;
+     latencyMs?: number; // 节点延迟
+     tokens?: {
+       prompt?: number;
+       completion?: number;
+       total?: number;
+     };
+     input?: unknown;
+     output?: unknown;
+     status: string;
+   }
+   ```
+
+3. **输入输出提取**:
+   - Langfuse 的 `trace-create` 事件通常不包含输入输出
+   - 从 observations 中提取第一个有输入的节点作为 Trace 输入
+   - 从 observations 中提取最后一个有输出的节点作为 Trace 输出
+
+---
+
+### Task 13.3: Trace 详情页优化 ✅
+
+**问题**:
+
+- 详情页输入/输出显示为空 ("-")
+- 没有展示各节点的执行时间线
+- 工作流名称显示"未知工作流"
+
+**解决方案**:
+
+1. **新增"时间线" Tab** (默认显示):
+   - 展示所有 observations 节点
+   - 每个节点显示：类型图标、名称、模型、延迟、Tokens、状态
+   - 布局参考 Dify 的追踪界面
+
+2. **统计卡片增强**:
+   - 新增"节点数"统计项
+
+3. **类型图标映射**:
+   - LLM/Generation → 紫色机器人图标
+   - Span → 蓝色分支图标
+   - Retrieval → 绿色数据库图标
+   - 其他 → 灰色播放图标
+
+---
+
+### 新增/修改文件
+
+| 文件                                                        | 变更说明                                        |
+| ----------------------------------------------------------- | ----------------------------------------------- |
+| `prisma/schema.prisma`                                      | 添加 Trace、Score 模型，添加 observations 字段  |
+| `prisma/migrations/20260127_add_trace_score/migration.sql`  | Trace、Score 表创建迁移                         |
+| `prisma/migrations/20260127_add_observations/migration.sql` | observations 字段迁移                           |
+| `src/lib/clickhouse/client.ts`                              | 完全重写，改用 Prisma                           |
+| `src/lib/clickhouse/queries.ts`                             | 完全重写，改用 Prisma，添加 observations 字段   |
+| `src/app/api/public/ingestion/route.ts`                     | 重写：事件分组、observations 合并、输入输出提取 |
+| `src/app/traces/[traceId]/page.tsx`                         | 重写：添加时间线 Tab、节点图标、格式化函数      |
+| `src/server/routers/traces.ts`                              | transformTrace 添加 observations 字段           |
+
+---
+
+### 遇到的问题与解决方案
+
+#### 卡点 1: Zeabur 构建类型错误
+
+**问题**: `Type 'JsonArray' is not comparable to type 'Observation[]'`
+
+**解决**: 使用 `unknown` 中间类型进行转换：
+
+```typescript
+const existingObs =
+  (existingTrace.observations as unknown as Observation[] | null) || [];
+```
+
+#### 卡点 2: Prisma 客户端未更新
+
+**问题**: 添加 `observations` 字段后本地 lint 报错
+
+**解决**: 运行 `npx prisma generate` 重新生成客户端
+
+---
+
+### 验证结果
+
+- ✅ Dify 工作流数据正确合并为单个 Trace
+- ✅ 时间线 Tab 展示各节点执行情况
+- ✅ 输入/输出正确显示（从 observations 提取）
+- ✅ Tokens 和延迟正确聚合显示
+
+---
+
+## Phase 14: 功能补全实施 (2026-01-27)
+
+**执行时间**: 2026-01-27 14:30 - 15:10
+
+### 背景
+
+基于 Langfuse 知识库分析，补全 SimpleFuse 的核心缺失功能，包括 Dataset Run 体系、公开 REST API、Score 模型增强和游标分页优化。
+
+---
+
+### Phase 14.1: P0 核心功能补全 ✅
+
+#### Task 1: Dataset Run 数据模型
+
+**变更**:
+
+- `prisma/schema.prisma` - 新增 DatasetRun、DatasetRunItem 模型
+- 建立与 Dataset、DatasetItem、Project 的关联关系
+- 迁移文件 `20260127063550_add_dataset_run`
+
+#### Task 2: Dataset Run tRPC Router
+
+**新增文件**: `src/server/routers/datasetRuns.ts`
+
+| Procedure  | 功能               |
+| ---------- | ------------------ |
+| `create`   | 创建 Dataset Run   |
+| `list`     | 列表（按 Dataset） |
+| `getById`  | 获取详情           |
+| `addItems` | 批量添加运行结果   |
+| `delete`   | 删除运行记录       |
+
+#### Task 3-5: Dataset Runs 页面
+
+**新增文件**:
+
+| 文件                                                 | 功能         |
+| ---------------------------------------------------- | ------------ |
+| `src/app/datasets/page.tsx`                          | 添加入口按钮 |
+| `src/app/datasets/[datasetId]/runs/page.tsx`         | 运行列表页   |
+| `src/app/datasets/[datasetId]/runs/[runId]/page.tsx` | 运行详情页   |
+
+**详情页特性**:
+
+- 期望输出 vs 实际输出对比展示
+- 错误状态和延迟统计
+- 通过/失败可视化
+
+#### Task 6-7: 公开 REST API
+
+**新增文件**:
+
+| 端点                           | 方法        | 功能             |
+| ------------------------------ | ----------- | ---------------- |
+| `/api/public/traces`           | GET         | Traces 列表      |
+| `/api/public/traces/[traceId]` | GET, DELETE | Trace 详情/删除  |
+| `/api/public/scores`           | GET, POST   | Scores 列表/创建 |
+
+**认证方式**: Basic Auth (Authorization header)
+
+---
+
+### Phase 14.2: P1 功能增强 ✅
+
+#### Task 8: Score 模型增强
+
+**Schema 变更**:
+
+```prisma
+model Score {
+  // 新增字段
+  observationId String?   // 关联到具体 Observation
+  dataType      String    @default("NUMERIC")  // NUMERIC | CATEGORICAL | BOOLEAN
+  stringValue   String?   // 分类型评分的字符串值
+  source        String    @default("EVAL")     // API | EVAL | ANNOTATION
+  authorUserId  String?   // 人工标注的用户
+}
+```
+
+**迁移**: `20260127065545_enhance_score_model`
+
+#### Task 9: 游标分页
+
+**修改文件**:
+
+| 文件                            | 变更                              |
+| ------------------------------- | --------------------------------- |
+| `src/lib/clickhouse/queries.ts` | 添加 cursor 参数，返回 nextCursor |
+| `src/server/routers/traces.ts`  | 支持 cursor 查询参数              |
+
+**分页逻辑**:
+
+```typescript
+// 游标优先，回退到 offset
+const traces = cursor
+  ? prisma.trace.findMany({ cursor: { id: cursor }, skip: 1 })
+  : prisma.trace.findMany({ skip: offset });
+
+// 判断是否有下一页
+const hasNextPage = traces.length > limit;
+const nextCursor = hasNextPage ? traces[limit - 1].id : undefined;
+```
+
+---
+
+### 验证结果
+
+- ✅ Prisma 迁移成功（4 个迁移文件）
+- ✅ Prisma Client 生成成功
+- ✅ TypeScript 编译成功
+- ✅ Next.js 生产构建成功 (Exit code: 0)
+
+---
+
+### 新增/修改文件清单
+
+| 类型   | 文件                                                 |
+| ------ | ---------------------------------------------------- |
+| Schema | `prisma/schema.prisma`                               |
+| 迁移   | `20260127063550_add_dataset_run`                     |
+| 迁移   | `20260127065545_enhance_score_model`                 |
+| Router | `src/server/routers/datasetRuns.ts`                  |
+| API    | `src/app/api/public/traces/route.ts`                 |
+| API    | `src/app/api/public/traces/[traceId]/route.ts`       |
+| API    | `src/app/api/public/scores/route.ts`                 |
+| 页面   | `src/app/datasets/[datasetId]/runs/page.tsx`         |
+| 页面   | `src/app/datasets/[datasetId]/runs/[runId]/page.tsx` |
+| 核心   | `src/lib/clickhouse/queries.ts`                      |
+| 核心   | `src/server/routers/traces.ts`                       |
+
+---
+
+### 页面导航更新
+
+| 路径                          | 功能         |
+| ----------------------------- | ------------ |
+| `/datasets/[id]/runs`         | 运行记录列表 |
+| `/datasets/[id]/runs/[runId]` | 运行详情对比 |
+
+### API 端点更新
+
+| 端点                      | 方法        | 状态    |
+| ------------------------- | ----------- | ------- |
+| `/api/public/traces`      | GET         | ✅ 新增 |
+| `/api/public/traces/[id]` | GET, DELETE | ✅ 新增 |
+| `/api/public/scores`      | GET, POST   | ✅ 新增 |

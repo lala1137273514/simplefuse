@@ -23,6 +23,7 @@ import {
   FileText,
   Search,
   Loader2,
+  History,
 } from 'lucide-react'
 import Link from 'next/link'
 import { trpc } from '@/lib/trpc-client'
@@ -50,8 +51,13 @@ function DatasetCard({ dataset, onView, onEdit, onDelete }: {
             <Database className="h-5 w-5 text-primary" />
           </div>
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Link href={`/datasets/${dataset.id}/runs`}>
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="运行记录">
+                <History className="h-4 w-4" />
+              </Button>
+            </Link>
             <Link href={`/evaluation-center?datasetId=${dataset.id}`}>
-              <Button variant="ghost" size="icon" className="h-8 w-8">
+              <Button variant="ghost" size="icon" className="h-8 w-8" title="开始评测">
                 <Eye className="h-4 w-4" />
               </Button>
             </Link>
