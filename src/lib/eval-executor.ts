@@ -118,6 +118,24 @@ export async function executeEvaluation(
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    
+    // 即使失败也写入 ClickHouse/PosgreSQL，以便审计
+    try {
+      await insertScore({
+        id: `score-${task.traceId}-${task.evaluatorId}-${Date.now()}`,
+        project_id: task.projectId,
+        trace_id: task.traceId,
+        evaluator_id: task.evaluatorId,
+        evaluator_name: task.evaluatorName,
+        score: 0,
+        reason: errorMessage,
+        eval_job_id: task.evalJobId,
+        created_at: new Date().toISOString(),
+      })
+    } catch (e) {
+      console.error('Failed to log error score:', e)
+    }
+
     return {
       traceId: task.traceId,
       evaluatorId: task.evaluatorId,

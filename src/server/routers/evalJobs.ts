@@ -131,19 +131,31 @@ export const evalJobsRouter = router({
       
       // 6. 同步执行评测
       try {
-        const { successCount, failedCount } = await executeEvaluationBatch(
+        const { results, successCount, failedCount } = await executeEvaluationBatch(
           tasks,
           input.llmConfigId
         )
         
-        // 7. 更新任务状态为 completed
+        const isFailed = failedCount === totalCount
+        let errorMessage = undefined
+        
+        if (isFailed && results.length > 0) {
+          // 查找第一个失败的结果及错误信息
+          const firstError = results.find(r => !r.success)
+          if (firstError) {
+             errorMessage = firstError.error || firstError.reason || 'Unknown error'
+          }
+        }
+        
+        // 7. 更新任务状态为 completed 或 failed
         await prisma.evalJob.update({
           where: { id: job.id },
           data: { 
-            status: failedCount === totalCount ? 'failed' : 'completed',
+            status: isFailed ? 'failed' : 'completed',
             completedCount: successCount,
             failedCount: failedCount,
             completedAt: new Date(),
+            errorMessage: errorMessage, // 保存错误信息
           },
         })
         
@@ -152,7 +164,8 @@ export const evalJobsRouter = router({
           totalCount,
           completedCount: successCount,
           failedCount,
-          status: failedCount === totalCount ? 'failed' : 'completed',
+          status: isFailed ? 'failed' : 'completed',
+          errorMessage, // 返回错误信息
         }
       } catch (error) {
         // 评测执行失败
