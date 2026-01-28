@@ -210,7 +210,8 @@ export const evalJobsRouter = router({
           totalCount: job.totalCount,
           completedCount: job.completedCount,
           failedCount: job.failedCount,
-          progress: job.totalCount > 0 
+          errorMessage: job.errorMessage,
+          progress: job.totalCount > 0
             ? Math.round((job.completedCount / job.totalCount) * 100) 
             : 0,
           startedAt: job.startedAt?.toISOString(),

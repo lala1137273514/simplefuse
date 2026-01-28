@@ -76,12 +76,27 @@ export default function EvaluationCenterPage() {
   const router = useRouter()
   const createJobMutation = trpc.evalJobs.create.useMutation({
     onSuccess: (result) => {
-      toast.success(`评测任务已完成，共 ${result.totalCount} 个子任务`)
+      if (result.status === 'failed') {
+        toast.error(`评测任务失败: ${result.errorMessage || '未知错误'}`)
+      } else if (result.failedCount > 0) {
+        toast.warning(`评测完成，但有 ${result.failedCount} 个任务失败`)
+        // 只有部分成功也刷新列表
+        utils.evalJobs.list.invalidate()
+        utils.statistics.invalidate()
+        setSelectedTraces([])
+        router.push(`/results/${result.id}`)
+        return
+      } else {
+        toast.success(`评测任务已完成，共 ${result.totalCount} 个子任务`)
+      }
+
       utils.evalJobs.list.invalidate()
       utils.statistics.invalidate()  // 刷新仪表盘统计数据
       setSelectedTraces([])
       // 评测完成后自动跳转到结果页
-      router.push(`/results/${result.id}`)
+      if (result.status !== 'failed') {
+        router.push(`/results/${result.id}`)
+      }
     },
     onError: (err) => toast.error(`创建失败: ${err.message}`),
   })
@@ -286,9 +301,15 @@ export default function EvaluationCenterPage() {
                       {getStatusIcon(job.status)}
                       <div className="flex-1 min-w-0">
                         <div className="font-medium">{job.name}</div>
-                        <div className="text-sm text-muted-foreground">
-                          {job.completedCount} / {job.totalCount} 完成
-                        </div>
+                        {job.errorMessage ? (
+                          <div className="text-xs text-red-500 truncate" title={job.errorMessage}>
+                            失败原因: {job.errorMessage}
+                          </div>
+                        ) : (
+                          <div className="text-sm text-muted-foreground">
+                            {job.completedCount} / {job.totalCount} 完成
+                          </div>
+                        )}
                       </div>
                       <div className="w-20">
                         <div className="h-2 rounded-full bg-muted overflow-hidden">
