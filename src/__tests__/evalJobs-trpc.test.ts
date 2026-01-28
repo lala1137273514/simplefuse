@@ -190,6 +190,50 @@ describe("evalJobs tRPC router", () => {
       expect(result.status).toBe("failed");
       expect(result.errorMessage).toBe("API Key Invalid");
     });
+
+    it("应该包含 Trace 上下文", async () => {
+      vi.mocked(prisma.evaluatorTemplate.findMany).mockResolvedValue(
+        [mockEvaluators[0]] as any,
+      );
+      vi.mocked(prisma.evalJob.create).mockResolvedValue(mockJob);
+
+      // Mock ClickHouse with observations
+      const { queryTraceById } = await import("../lib/clickhouse");
+      vi.mocked(queryTraceById).mockResolvedValue({
+        id: "trace-ctx-001",
+        input: "test input",
+        output: "test output",
+        observations: [
+            { type: 'llm', name: 'LLM Node', input: 'hi', output: 'hello', startTime: new Date().toISOString() }
+        ]
+      } as any);
+
+      const { executeEvaluationBatch } = await import("../lib/eval-executor");
+      vi.mocked(executeEvaluationBatch).mockResolvedValue({
+        results: [],
+        successCount: 1,
+        failedCount: 0
+      });
+
+      const ctx = await createContext();
+      const caller = appRouter.createCaller(ctx);
+
+      await caller.evalJobs.create({
+        projectId: "project-abc",
+        sourceType: "trace",
+        traceIds: ["trace-ctx-001"],
+        evaluatorIds: ["eval-001"],
+        llmConfigId: "llm-001",
+      });
+
+      // Verify that executeEvaluationBatch was called with tasks containing traceContext
+      const calls = vi.mocked(executeEvaluationBatch).mock.calls;
+      expect(calls.length).toBeGreaterThan(0);
+      const tasks = calls[0][0];
+      expect(tasks[0].traceContext).toContain('[Step 1] llm (LLM Node)');
+      expect(tasks[0].traceContext).toContain('Input: hi');
+      expect(tasks[0].traceContext).toContain('Output: hello');
+    });
   });
 
   describe("evalJobs.list", () => {

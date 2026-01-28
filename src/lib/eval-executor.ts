@@ -16,7 +16,8 @@ export interface EvalTaskData {
   evaluatorName: string
   promptTemplate: string
   projectId: string
-  evalJobId: string  // 关联的评测任务 ID
+  evalJobId: string
+  traceContext?: string // 完整的 Trace 执行上下文
 }
 
 export interface EvalResult {
@@ -66,8 +67,11 @@ export async function executeEvaluation(
     // 3. 构建评测 Prompt
     const evaluationPrompt = buildEvaluationPrompt(
       task.promptTemplate,
-      task.traceInput,
-      task.traceOutput
+      {
+        input: task.traceInput,
+        output: task.traceOutput,
+        traceContext: task.traceContext
+      }
     )
 
     // 4. 调用 LLM
@@ -184,24 +188,47 @@ export async function executeEvaluationBatch(
  */
 function buildEvaluationPrompt(
   template: string,
-  input: string,
-  output: string
+  data: { input: string; output: string; traceContext?: string }
 ): string {
   // 替换模板中的占位符
   let prompt = template
-    .replace(/\{\{input\}\}/g, input)
-    .replace(/\{\{output\}\}/g, output)
-    .replace(/\{\{user_input\}\}/g, input)
-    .replace(/\{\{ai_response\}\}/g, output)
-    .replace(/\{\{response\}\}/g, output)
+  
+  // 替换必须的变量
+  if (data.input) prompt = prompt.replace(/{{\s*input\s*}}/g, data.input)
+  if (data.output) prompt = prompt.replace(/{{\s*output\s*}}/g, data.output)
+  
+  // 替换可选的上下文变量
+  if (data.traceContext) {
+    // 检查模板中是否包含 context 占位符
+    const hasContextPlaceholder = /{{\s*context\s*}}/.test(prompt);
+    
+    // 如果包含占位符，直接替换
+    prompt = prompt.replace(/{{\s*context\s*}}/g, data.traceContext);
+    
+    // 如果不包含任何占位符（假设是纯指令模式，或者用户忘记了），
+    // 且没有显式使用 context，我们考虑追加上下文
+    // 但为了保险起见，我们只在完全没有使用 {{}} 语法，或者这是默认模板的情况下追加
+    // 简单起见：如果模板里没有 {{context}} 且有 traceContext，我们尝试追加一个 "Context" 章节
+    // 只有当模板看起来不像是一个严格的结构化 Prompt 时才追加？
+    // 或者：总是替换完 input/output 后，如果还有 traceContext 没用上，追加在最后？
+    // 决策：为了兼容性，如果模板里没有 {{context}}，我们在 input/output 之后追加
+    if (!hasContextPlaceholder) {
+       prompt += `\n\n### Execution Context\n${data.traceContext}`;
+    }
+  }
+  // 兼容旧的占位符
+  prompt = prompt
+    .replace(/\{\{user_input\}\}/g, data.input)
+    .replace(/\{\{ai_response\}\}/g, data.output)
+    .replace(/\{\{response\}\}/g, data.output)
 
   // 如果模板没有占位符，追加输入输出
   if (!template.includes('{{')) {
     prompt = `${template}
-
-用户输入: ${input}
-
-AI 回复: ${output}`
+ 
+ 用户输入: ${data.input}
+ 
+ AI 回复: ${data.output}`
   }
 
   return prompt

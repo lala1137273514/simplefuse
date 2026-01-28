@@ -39,6 +39,38 @@ const getJobInputSchema = z.object({
   id: z.string().min(1),
 })
 
+/**
+ * 格式化 Trace 上下文
+ */
+function formatTraceContext(observations: any[] | null): string {
+  if (!observations || !Array.isArray(observations) || observations.length === 0) return '';
+  
+  // 按开始时间排序
+  const sorted = [...observations].sort((a, b) => {
+    const tA = a.startTime ? new Date(a.startTime).getTime() : 0;
+    const tB = b.startTime ? new Date(b.startTime).getTime() : 0;
+    return tA - tB;
+  });
+
+  return sorted.map((obs, index) => {
+    let text = `[Step ${index + 1}] ${obs.type || 'unknown'} (${obs.name || 'unnamed'})`;
+    if (obs.input) {
+        const inputStr = typeof obs.input === 'string' ? obs.input : JSON.stringify(obs.input);
+        // 如果内容不太长，直接显示；如果太长，且是 JSON，可能需要美化？这里暂且保持紧凑
+        text += `\nInput: ${inputStr}`;
+    }
+    if (obs.output) {
+        const outputStr = typeof obs.output === 'string' ? obs.output : JSON.stringify(obs.output);
+        text += `\nOutput: ${outputStr}`;
+    }
+    if (obs.status === 'error' || obs.level === 'ERROR') {
+        text += `\nStatus: Error`;
+        if (obs.statusMessage) text += ` - ${obs.statusMessage}`;
+    }
+    return text;
+  }).join('\n\n');
+}
+
 export const evalJobsRouter = router({
 /**
    * 创建评测任务 - 同步执行评测
@@ -60,19 +92,29 @@ export const evalJobsRouter = router({
       }
       
       // 2. 获取要评测的 Traces
-      let traces: { id: string; input: string; output: string }[] = []
+      let traces: { id: string; input: string; output: string; context?: string }[] = []
       
       if (input.sourceType === 'trace' && input.traceIds?.length === 1) {
         const trace = await queryTraceById(input.traceIds[0])
         if (trace) {
-          traces = [{ id: trace.id, input: trace.input, output: trace.output }]
+          traces = [{ 
+            id: trace.id, 
+            input: trace.input, 
+            output: trace.output,
+            context: formatTraceContext(trace.observations as any[])
+          }]
         }
       } else if (input.sourceType === 'traces' && input.traceIds) {
         // 多个 Traces
         for (const traceId of input.traceIds) {
           const trace = await queryTraceById(traceId)
           if (trace) {
-            traces.push({ id: trace.id, input: trace.input, output: trace.output })
+            traces.push({ 
+                id: trace.id, 
+                input: trace.input, 
+                output: trace.output,
+                context: formatTraceContext(trace.observations as any[])
+            })
           }
         }
       } else if (input.sourceType === 'dataset' && input.datasetId) {
@@ -124,7 +166,8 @@ export const evalJobsRouter = router({
             evaluatorName: evaluator.name,
             promptTemplate: evaluator.promptTemplate,
             projectId: input.projectId,
-            evalJobId: job.id,  // 关联评测任务 ID
+            evalJobId: job.id,
+            traceContext: trace.context, // 传递上下文
           })
         }
       }

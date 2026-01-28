@@ -254,30 +254,43 @@ export async function POST(request: Request) {
           if (obs.latencyMs) totalLatency += obs.latencyMs
         }
         
-        // 从 observations 提取输入输出
-        // 输入：取第一个有输入的节点
-        // 输出：取最后一个有输出的节点（通常是 LLM 节点）
-        let extractedInput: string | undefined
-        let extractedOutput: string | undefined
-        
-        for (const obs of observationsData) {
-          if (!extractedInput && obs.input) {
-            extractedInput = typeof obs.input === 'string' ? obs.input : JSON.stringify(obs.input)
-          }
-        }
-        
-        // 反向遍历找最后一个有输出的节点
-        for (let i = observationsData.length - 1; i >= 0; i--) {
-          const obs = observationsData[i]
-          if (obs.output) {
-            extractedOutput = typeof obs.output === 'string' ? obs.output : JSON.stringify(obs.output)
-            break
-          }
-        }
-        
         // 获取 trace 主体数据
         const traceBody = traceEvent?.body || {}
         const timestamp = traceEvent?.timestamp || observations[0]?.timestamp || new Date().toISOString()
+        
+        // 从 observations 提取输入输出 (仅作为备选)
+        let extractedInput: string | undefined
+        let extractedOutput: string | undefined
+        
+        // 只有当 traceBody 中也没提供 input 时，才尝试提取
+        if (!traceBody.input) {
+            for (const obs of observationsData) {
+            if (!extractedInput && obs.input) {
+                extractedInput = typeof obs.input === 'string' ? obs.input : JSON.stringify(obs.input)
+            }
+            }
+        }
+        
+        // 只有当 traceBody 中也没提供 output 时，才尝试提取
+        if (!traceBody.output) {
+            // 反向遍历找最后一个有输出的节点
+            for (let i = observationsData.length - 1; i >= 0; i--) {
+            const obs = observationsData[i]
+            if (obs.output) {
+                extractedOutput = typeof obs.output === 'string' ? obs.output : JSON.stringify(obs.output)
+                break
+            }
+            }
+        }
+        
+        // 优先使用 traceEvent 中的 input/output，其次使用提取的
+        const finalInput = traceBody.input 
+            ? (typeof traceBody.input === 'string' ? traceBody.input : JSON.stringify(traceBody.input))
+            : extractedInput
+
+        const finalOutput = traceBody.output
+            ? (typeof traceBody.output === 'string' ? traceBody.output : JSON.stringify(traceBody.output))
+            : extractedOutput
         
         // 构建 metadata
         const metadata: Record<string, string> = {}
@@ -318,8 +331,11 @@ export async function POST(request: Request) {
               observations: mergedObs as unknown as Prisma.JsonArray,
               totalTokens: updatedTotalTokens || existingTrace.totalTokens,
               latencyMs: updatedTotalLatency || existingTrace.latencyMs,
-              input: extractedInput || existingTrace.input,
-              output: extractedOutput || existingTrace.output,
+              // 如果提供了新的 finalInput/Output 则更新，否则保持原样 (或使用提取的)
+              // 注意：如果 traceEvent 只是部分更新且未带 input/output，这里 finalInput 可能是 undefined，
+              // 我们应该只在 finalInput 有值时更新
+              input: finalInput ?? existingTrace.input,
+              output: finalOutput ?? existingTrace.output,
               updatedAt: new Date(),
             },
           })
@@ -333,8 +349,8 @@ export async function POST(request: Request) {
               projectId: auth.projectId,
               name: traceBody.name || 'Trace',
               timestamp: new Date(timestamp),
-              input: extractedInput || (traceBody.input ? JSON.stringify(traceBody.input) : undefined),
-              output: extractedOutput || (traceBody.output ? JSON.stringify(traceBody.output) : undefined),
+              input: finalInput,
+              output: finalOutput,
               metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
               tags: ['langfuse'],
               totalTokens: totalTokens || undefined,
