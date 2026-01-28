@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -70,6 +70,14 @@ export default function EvaluationCenterPage() {
   const { data: jobsData, isLoading: isLoadingJobs, isFetching: isFetchingJobs } = trpc.evalJobs.list.useQuery({
     projectId: 'default',
     limit: 10,
+  }, {
+    refetchOnWindowFocus: false, // 避免切换窗口时自动刷新
+    retry: 1, // 失败只重试一次
+    refetchInterval: (data: any) => {
+        // 如果有运行中的任务，每 5 秒刷新一次
+        const hasRunning = data?.jobs?.some((job: any) => job.status === 'running');
+        return hasRunning ? 5000 : false;
+    }
   })
 
   // 创建评测任务
@@ -101,19 +109,23 @@ export default function EvaluationCenterPage() {
     onError: (err) => toast.error(`创建失败: ${err.message}`),
   })
 
-  const evaluators = evaluatorsData?.evaluators || []
-  const llmConfigs = llmConfigsData?.configs || []
-  const traces = tracesData?.traces || []
-  const jobs = jobsData?.jobs || []
+  const evaluators = useMemo(() => evaluatorsData?.evaluators || [], [evaluatorsData])
+  const llmConfigs = useMemo(() => llmConfigsData?.configs || [], [llmConfigsData])
+  const traces = useMemo(() => tracesData?.traces || [], [tracesData])
+  const jobs = useMemo(() => jobsData?.jobs || [], [jobsData])
 
   // 自动选择默认 LLM 配置
   useEffect(() => {
     if (llmConfigs.length > 0 && !selectedLlmConfig) {
       const defaultConfig = llmConfigs.find((c: any) => c.isDefault)
-      if (defaultConfig) {
-        setSelectedLlmConfig(defaultConfig.id)
-      } else {
-        setSelectedLlmConfig(llmConfigs[0].id)
+      const targetId = defaultConfig ? defaultConfig.id : llmConfigs[0].id
+      
+      // 避免在 render 期间触发不必要的更新
+      if (selectedLlmConfig !== targetId) {
+          // 使用 setTimeout 将状态更新推迟到下一次事件循环
+          setTimeout(() => {
+              setSelectedLlmConfig(targetId)
+          }, 0)
       }
     }
   }, [llmConfigs, selectedLlmConfig])

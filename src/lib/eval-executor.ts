@@ -70,7 +70,6 @@ export async function executeEvaluation(
       {
         input: task.traceInput,
         output: task.traceOutput,
-        traceContext: task.traceContext
       }
     )
 
@@ -197,25 +196,6 @@ function buildEvaluationPrompt(
   if (data.input) prompt = prompt.replace(/{{\s*input\s*}}/g, data.input)
   if (data.output) prompt = prompt.replace(/{{\s*output\s*}}/g, data.output)
   
-  // 替换可选的上下文变量
-  if (data.traceContext) {
-    // 检查模板中是否包含 context 占位符
-    const hasContextPlaceholder = /{{\s*context\s*}}/.test(prompt);
-    
-    // 如果包含占位符，直接替换
-    prompt = prompt.replace(/{{\s*context\s*}}/g, data.traceContext);
-    
-    // 如果不包含任何占位符（假设是纯指令模式，或者用户忘记了），
-    // 且没有显式使用 context，我们考虑追加上下文
-    // 但为了保险起见，我们只在完全没有使用 {{}} 语法，或者这是默认模板的情况下追加
-    // 简单起见：如果模板里没有 {{context}} 且有 traceContext，我们尝试追加一个 "Context" 章节
-    // 只有当模板看起来不像是一个严格的结构化 Prompt 时才追加？
-    // 或者：总是替换完 input/output 后，如果还有 traceContext 没用上，追加在最后？
-    // 决策：为了兼容性，如果模板里没有 {{context}}，我们在 input/output 之后追加
-    if (!hasContextPlaceholder) {
-       prompt += `\n\n### Execution Context\n${data.traceContext}`;
-    }
-  }
   // 兼容旧的占位符
   prompt = prompt
     .replace(/\{\{user_input\}\}/g, data.input)

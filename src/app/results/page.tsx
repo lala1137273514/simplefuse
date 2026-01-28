@@ -61,6 +61,13 @@ export default function ResultsPage() {
     projectId: 'default',
     status: statusFilter !== 'all' ? statusFilter as 'pending' | 'running' | 'completed' | 'failed' : undefined,
     limit: 50,
+  }, {
+    refetchOnWindowFocus: false,
+    retry: 1,
+    refetchInterval: (data: any) => {
+        const hasRunning = data?.jobs?.some((job: any) => job.status === 'running');
+        return hasRunning ? 3000 : false;
+    }
   })
 
   const handleRefresh = () => {
